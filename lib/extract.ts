@@ -1,7 +1,9 @@
 import "server-only";
 import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
-import { existsSync } from "node:fs";
+import { existsSync, copyFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /**
  * YouTube increasingly answers yt-dlp with "Sign in to confirm you're not a
@@ -13,14 +15,38 @@ import { existsSync } from "node:fs";
  *     point this at its mount path. See README for how to export the file.
  *   - YTDLP_COOKIES_FROM_BROWSER: browser name (e.g. "chrome") — only useful
  *     for local dev, where yt-dlp runs on the same machine as your browser.
+ *
+ * yt-dlp doesn't just read the cookies file — it writes the (possibly
+ * refreshed) jar back to the same path when it's done. Render's Secret
+ * Files are mounted read-only (e.g. /etc/secrets/cookies.txt), so writing
+ * straight to YTDLP_COOKIES_FILE throws EROFS and crashes the whole
+ * process *after* extraction already ran, masking the real error. So we
+ * copy it once to a writable tmp path per server instance and point
+ * yt-dlp at that copy instead.
  */
+let writableCookiesFile: string | null = null;
+
+function getWritableCookiesFile(sourcePath: string): string | null {
+  if (writableCookiesFile && existsSync(writableCookiesFile)) return writableCookiesFile;
+  try {
+    const dest = join(tmpdir(), "yt-dlp-cookies.txt");
+    copyFileSync(sourcePath, dest);
+    writableCookiesFile = dest;
+    return dest;
+  } catch (err) {
+    console.warn(`Failed to copy YTDLP_COOKIES_FILE to a writable path: ${(err as Error).message}`);
+    return null;
+  }
+}
+
 function getCookieArgs(): string[] {
   const cookiesFile = process.env.YTDLP_COOKIES_FILE;
   if (cookiesFile) {
     if (!existsSync(cookiesFile)) {
       console.warn(`YTDLP_COOKIES_FILE is set to "${cookiesFile}" but that file doesn't exist`);
     } else {
-      return ["--cookies", cookiesFile];
+      const writablePath = getWritableCookiesFile(cookiesFile);
+      if (writablePath) return ["--cookies", writablePath];
     }
   }
 
