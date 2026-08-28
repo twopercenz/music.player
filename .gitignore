@@ -23,11 +23,13 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
 
 # local env files
 .env*.local
 .env
+
+# yt-dlp cookies — a real login session, never commit this
+cookies.txt
 
 # vercel
 .vercel
@@ -38,3 +40,5 @@ next-env.d.ts
 
 # misc
 .vscode
+PRIVATE.md
+cookies.txt
