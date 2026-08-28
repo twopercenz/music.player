@@ -93,6 +93,16 @@ export async function extractAudioStream(videoId: string): Promise<ReadableStrea
     "bestaudio/best",
     "--no-playlist",
     "--no-part",
+    // yt-dlp now needs a real JS runtime to solve YouTube's signature
+    // ("nsig") challenge — without one it only warns ("No supported
+    // JavaScript runtime could be found") and silently drops most/all
+    // formats, which is what actually produces "Requested format is not
+    // available" downstream. Only "deno" is enabled by default, and the
+    // container has neither deno nor node — but the base image is
+    // oven/bun:1-debian, so `bun` (a supported runtime) is already on PATH
+    // for free. See yt-dlp's EJS wiki page.
+    "--js-runtimes",
+    "bun",
     // The default "web" client is the most fragile against YouTube's ongoing
     // anti-bot changes ("The page needs to be reloaded" is a web-client-only
     // failure mode) — falling back through android/ios avoids most of it,
