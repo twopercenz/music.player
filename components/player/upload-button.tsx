@@ -44,7 +44,7 @@ export default function UploadButton() {
     <>
       <button
         onClick={() => inputRef.current?.click()}
-        className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/70 backdrop-blur-md transition hover:bg-white/10"
+        className="pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/70 backdrop-blur-md transition hover:bg-white/10"
         title="내 파일 업로드"
       >
         <Upload className="h-3.5 w-3.5" />
@@ -63,7 +63,7 @@ export default function UploadButton() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
             onClick={() => !saving && setPending(null)}
           >
             <motion.div

@@ -108,7 +108,7 @@ export default function SearchBar() {
   };
 
   return (
-    <div ref={containerRef} className="relative mx-auto w-full max-w-xl">
+    <div ref={containerRef} className="pointer-events-auto relative mx-auto w-full max-w-xl">
       <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2.5 backdrop-blur-md">
         <Search className="h-4 w-4 shrink-0 text-white/40" />
         <input

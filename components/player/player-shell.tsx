@@ -14,7 +14,13 @@ export default function PlayerShell() {
     <div className="relative h-screen w-full overflow-hidden text-white">
       <Background colors={dominantColors} />
 
-      <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 p-4 md:p-6">
+      {/* This bar is `inset-x-0` (full viewport width) purely to position
+          itself, but its content (search box + upload button) only fills
+          the left portion — without pointer-events-none, the empty rest of
+          the strip still captures clicks/z-10 above whatever's underneath
+          it, which used to block RightPanel's lyrics toggle button sitting
+          in that same top strip on the right side. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center gap-2 p-4 md:p-6">
         <SearchBar />
         <UploadButton />
       </div>
