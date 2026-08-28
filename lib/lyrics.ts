@@ -45,10 +45,15 @@ export async function fetchLyrics(
 
   if (exact.ok) {
     const track = (await exact.json()) as LrcLibTrack;
-    return toResult(track);
+    // lrclib has multiple community submissions per song, and `get` returns
+    // just one of them — it's sometimes a metadata-only stub with no
+    // syncedLyrics *or* plainLyrics, even though other submissions of the
+    // exact same song (findable via `search`) do have them. Don't accept an
+    // empty stub as "no lyrics" — fall through to search for a real one.
+    if (track.syncedLyrics || track.plainLyrics) return toResult(track);
   }
 
-  // Fall back to fuzzy search + closest duration match (exact `get` is strict about takes/edits).
+  // Fall back to fuzzy search (exact `get` is strict about takes/edits/duration).
   const search = await fetch(
     `${BASE_URL}/search?` + new URLSearchParams({ artist_name: artist, track_name: title }),
     { headers: { "User-Agent": USER_AGENT }, cache: "no-store" },
@@ -58,13 +63,20 @@ export async function fetchLyrics(
   const results = (await search.json()) as Array<LrcLibTrack & { duration: number }>;
   if (results.length === 0) return { synced: null, plain: null };
 
-  const closest = results.reduce((best, candidate) =>
-    Math.abs(candidate.duration - durationSeconds) < Math.abs(best.duration - durationSeconds)
-      ? candidate
-      : best,
-  );
+  // Prefer a submission that actually has lyrics over one that's merely the
+  // closest duration match but empty — a stub a few results away is worse
+  // than a real submission a couple seconds off.
+  const best = results.reduce((best, candidate) => {
+    const bestTier = best.syncedLyrics ? 0 : best.plainLyrics ? 1 : 2;
+    const candidateTier = candidate.syncedLyrics ? 0 : candidate.plainLyrics ? 1 : 2;
+    if (candidateTier !== bestTier) return candidateTier < bestTier ? candidate : best;
 
-  return toResult(closest);
+    const bestDelta = Math.abs(best.duration - durationSeconds);
+    const candidateDelta = Math.abs(candidate.duration - durationSeconds);
+    return candidateDelta < bestDelta ? candidate : best;
+  });
+
+  return toResult(best);
 }
 
 function toResult(track: LrcLibTrack): LyricsResult {
