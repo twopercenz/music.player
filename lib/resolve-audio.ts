@@ -1,6 +1,6 @@
 "use client";
 
-import { getCachedAudioUrl, cacheAudio, getLocalTrackAudioUrl } from "@/lib/db/indexeddb";
+import { getCachedAudioUrl, getLocalTrackAudioUrl } from "@/lib/db/indexeddb";
 import type { Track } from "@/lib/types";
 
 export interface ResolvedAudio {
@@ -14,6 +14,15 @@ export interface ResolvedAudio {
  *   /api/extract (the expensive, yt-dlp-backed step) on a cache miss. There's
  *   no separate "matching" step anymore — search results already *are* the
  *   video that gets played.
+ *
+ * A cache miss points straight at /api/extract instead of awaiting the whole
+ * transcode as a Blob first: the route streams bytes out as ffmpeg produces
+ * them (see lib/extract.ts), and <audio src="..."> buffers/plays that
+ * progressively on its own, so playback starts as soon as the first couple
+ * seconds of audio exist instead of after the entire (multi-minute) song has
+ * finished extracting. The trade-off is that a fresh play isn't written to
+ * the IndexedDB cache — only tracks that got a full Blob before (or that a
+ * future background-caching pass adds) hit the fast path above.
  */
 export async function resolveTrackAudio(track: Track): Promise<ResolvedAudio> {
   if (track.source === "local") {
@@ -25,13 +34,5 @@ export async function resolveTrackAudio(track: Track): Promise<ResolvedAudio> {
   const cachedUrl = await getCachedAudioUrl(track.videoId);
   if (cachedUrl) return { url: cachedUrl };
 
-  const res = await fetch(`/api/extract?videoId=${track.videoId}`);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "오디오 추출에 실패했습니다.");
-  }
-  const blob = await res.blob();
-  const url = await cacheAudio(track.videoId, blob);
-
-  return { url };
+  return { url: `/api/extract?videoId=${track.videoId}` };
 }

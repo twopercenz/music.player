@@ -55,6 +55,18 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
       const audio = audioRef.current;
       if (!track || !audio) return;
 
+      // Stop the outgoing track immediately — resolving the new one (an
+      // extraction can take several seconds) used to leave the previous
+      // song audibly playing under the new track's title/artwork/lyrics
+      // the whole time. Clearing src also cancels any in-flight buffering
+      // of the outgoing stream instead of leaving it downloading in the
+      // background.
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      setIsPlaying(false);
+      setCurrentTimeMs(0);
+
       setCurrentIndex(index);
       setResolveStatus("resolving");
       setResolveError(null);
@@ -63,7 +75,7 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         const resolved = await resolveTrackAudio(track);
 
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = resolved.url;
+        objectUrlRef.current = resolved.url.startsWith("blob:") ? resolved.url : null;
 
         audio.src = resolved.url;
         await audio.play();
@@ -187,12 +199,14 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
     };
   }, [audioRef, next]);
 
-  // Whenever the current track changes: look up real square album art + clean
-  // metadata on iTunes (YouTube thumbnails are 16:9 and titles are guesswork —
-  // see lib/itunes.ts), then use whichever metadata is best (iTunes' if found,
-  // else the track's own YouTube-derived guess) for lyrics + the background's
-  // dominant-color extraction. Nothing here is persisted — it's display-only,
-  // so a bad or missing match just falls back gracefully.
+  // Whenever the current track changes: look up real square album art on
+  // iTunes (YouTube thumbnails are 16:9 — see lib/itunes.ts) for the
+  // background's dominant-color extraction, and fetch lyrics — in parallel,
+  // not chained, since search results' title/artist are already clean
+  // iTunes metadata (see search-bar.tsx) and don't need to wait on the
+  // artwork lookup to be usable for a lyrics query. Nothing here is
+  // persisted — it's display-only, so a bad or missing match just falls
+  // back gracefully.
   useEffect(() => {
     if (!current) {
       setLyrics(null);
@@ -203,6 +217,7 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
 
     let cancelled = false;
     setArtwork(null);
+    setLyrics(null);
 
     fetcher<{ match: ArtworkEnrichment | null }>(
       `/api/artwork?${new URLSearchParams({
@@ -211,7 +226,10 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         durationMs: String(current.durationMs),
       })}`,
     )
-      .catch(() => ({ match: null }))
+      .catch((error) => {
+        console.error("artwork lookup failed", error);
+        return { match: null };
+      })
       .then(({ match }) => {
         if (cancelled) return;
         setArtwork(match);
@@ -222,17 +240,20 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         } else {
           setDominantColors(null);
         }
+      });
 
-        return fetcher<LyricsResult>(
-          `/api/lyrics?${new URLSearchParams({
-            artist: match?.artist ?? current.artist,
-            title: match?.title ?? current.title,
-            durationMs: String(current.durationMs),
-          })}`,
-        );
-      })
-      .then((result) => result && !cancelled && setLyrics(result))
-      .catch(() => !cancelled && setLyrics({ synced: null, plain: null }));
+    fetcher<LyricsResult>(
+      `/api/lyrics?${new URLSearchParams({
+        artist: current.artist,
+        title: current.title,
+        durationMs: String(current.durationMs),
+      })}`,
+    )
+      .then((result) => !cancelled && setLyrics(result))
+      .catch((error) => {
+        console.error("lyrics lookup failed", error);
+        if (!cancelled) setLyrics({ synced: null, plain: null });
+      });
 
     return () => {
       cancelled = true;
