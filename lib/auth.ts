@@ -60,20 +60,31 @@ export async function createSessionToken(): Promise<string> {
   return `${expiresAt}.${toHex(signature)}`;
 }
 
+// Wrapped in try/catch: hmacKey()/passwordFingerprint() throw if
+// SESSION_SECRET/SITE_PASSWORD aren't set, and this runs in middleware for
+// every request — an unhandled throw there would 500 the entire app,
+// including the /login page itself, on one missing env var. A config error
+// should send the visitor to the login screen just like a bad token does;
+// it's still logged so it isn't silently swallowed.
 export async function verifySessionToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
-  const [expiresAtStr, signatureHex] = token.split(".");
-  if (!expiresAtStr || !signatureHex) return false;
+  try {
+    if (!token) return false;
+    const [expiresAtStr, signatureHex] = token.split(".");
+    if (!expiresAtStr || !signatureHex) return false;
 
-  const expiresAt = Number(expiresAtStr);
-  if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
+    const expiresAt = Number(expiresAtStr);
+    if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
 
-  const key = await hmacKey();
-  const message = `${expiresAtStr}.${await passwordFingerprint()}`;
-  // crypto.subtle.verify does a constant-time comparison internally, unlike
-  // signing-and-comparing-hex-strings-with-=== (a theoretical oracle for
-  // forging a signature).
-  const sigBytes = Uint8Array.from(signatureHex.match(/../g) ?? [], (h) => parseInt(h, 16));
-  if (sigBytes.length !== 32) return false;
-  return crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(message));
+    const key = await hmacKey();
+    const message = `${expiresAtStr}.${await passwordFingerprint()}`;
+    // crypto.subtle.verify does a constant-time comparison internally,
+    // unlike signing-and-comparing-hex-strings-with-=== (a theoretical
+    // oracle for forging a signature).
+    const sigBytes = Uint8Array.from(signatureHex.match(/../g) ?? [], (h) => parseInt(h, 16));
+    if (sigBytes.length !== 32) return false;
+    return await crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(message));
+  } catch (err) {
+    console.error("verifySessionToken failed", err);
+    return false;
+  }
 }
