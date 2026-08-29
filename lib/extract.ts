@@ -70,6 +70,42 @@ export class TooManyExtractionsError extends Error {
   }
 }
 
+// app/api/extract/route.ts "probes" (?probe=1) a fresh videoId before ever
+// setting <audio src="...">, so a real yt-dlp/ffmpeg failure (private video,
+// etc.) surfaces its actual message instead of the browser's generic
+// NotSupportedError. That probe has to run the *real* extraction to get a
+// real answer — but the <audio> element's own request lands microseconds
+// later for the exact same videoId, and the cache isn't populated yet
+// (extraction is still streaming). Rather than let that spawn a second
+// yt-dlp+ffmpeg pair, the probe's still-running extraction is stashed here
+// and handed to the very next non-probe request for the same videoId.
+interface PendingExtraction {
+  stream: ReadableStream<Uint8Array>;
+  abort: () => void;
+}
+const pendingExtractions = new Map<string, PendingExtraction>();
+
+/** Takes (and removes) a stashed extraction for videoId, if a probe left one. */
+export function claimPendingStream(videoId: string): PendingExtraction | null {
+  const pending = pendingExtractions.get(videoId);
+  if (!pending) return null;
+  pendingExtractions.delete(videoId);
+  return pending;
+}
+
+function stashForReuse(videoId: string, pending: PendingExtraction): void {
+  pendingExtractions.set(videoId, pending);
+  // If nobody claims it — the probe succeeded but the user skipped away
+  // before <audio src> ever got set — ffmpeg would otherwise keep streaming
+  // into a PassThrough nothing is draining, piling up in memory forever.
+  setTimeout(() => {
+    if (pendingExtractions.get(videoId) === pending) {
+      pendingExtractions.delete(videoId);
+      pending.abort();
+    }
+  }, 15_000);
+}
+
 function summarizeYtDlpError(stderr: string): string {
   if (/sign in to confirm/i.test(stderr)) {
     return "YouTube가 봇 감지로 요청을 막았습니다. YTDLP_COOKIES_FILE 설정이 필요합니다 (README 참고).";
@@ -88,15 +124,30 @@ function summarizeYtDlpError(stderr: string): string {
  * `yt-dlp` (best audio track, raw) into `ffmpeg` (transcode to mp3).
  *
  * Requires the `yt-dlp` and `ffmpeg` binaries to be on PATH — see Dockerfile.
- * Nothing is written to disk here; both processes stream through pipes, and
- * per the project's design nothing is persisted server-side either — the
- * caller (api/extract) streams this straight to the client, which caches it
- * in IndexedDB.
+ * The stream is teed to a short-lived server-side tmp cache as it goes (see
+ * lib/audio-cache.ts) in addition to the caller (api/extract) streaming it
+ * to the client, which caches its own copy in IndexedDB.
  */
 export async function extractAudioStream(
   videoId: string,
   signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
+  const { stream } = await extractAudioStreamInternal(videoId, signal);
+  return stream;
+}
+
+/** Runs a real extraction purely to confirm success/failure, then stashes the
+ * still-streaming result for claimPendingStream() instead of discarding it —
+ * see the PendingExtraction comment above for why. */
+export async function extractAudioStreamForProbe(videoId: string, signal?: AbortSignal): Promise<void> {
+  const pending = await extractAudioStreamInternal(videoId, signal);
+  stashForReuse(videoId, pending);
+}
+
+async function extractAudioStreamInternal(
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<PendingExtraction> {
   if (activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
     throw new TooManyExtractionsError();
   }
@@ -293,5 +344,5 @@ export async function extractAudioStream(
     cacheWriteStream.destroy();
   });
 
-  return Readable.toWeb(clientStream) as ReadableStream<Uint8Array>;
+  return { stream: Readable.toWeb(clientStream) as ReadableStream<Uint8Array>, abort: killAll };
 }

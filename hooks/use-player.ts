@@ -82,6 +82,23 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         const resolved = await resolveTrackAudio(track);
         const isCacheHit = resolved.url.startsWith("blob:");
 
+        // <audio src="..."> can't read a failed request's JSON error body —
+        // a real yt-dlp/ffmpeg failure (private video, quota, etc.) just
+        // shows up as the browser's generic "no supported source" error
+        // instead of the message lib/extract.ts actually classified it as.
+        // Probing first (only for a fresh, non-cached URL — a blob: URL is
+        // already-known-good data) gets a real answer before audio.src is
+        // ever set, without re-running the extraction: see the probe/reuse
+        // handoff in app/api/extract/route.ts + lib/extract.ts.
+        if (!isCacheHit) {
+          const probeUrl = `${resolved.url}${resolved.url.includes("?") ? "&" : "?"}probe=1`;
+          const probe = await fetch(probeUrl);
+          if (!probe.ok) {
+            const json = await probe.json().catch(() => ({}));
+            throw new Error(json.error ?? "재생에 실패했습니다");
+          }
+        }
+
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = isCacheHit ? resolved.url : null;
 
