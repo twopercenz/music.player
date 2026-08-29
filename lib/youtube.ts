@@ -32,6 +32,9 @@ async function youtubeFetch<T>(path: string, params: Record<string, string>): Pr
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (res.status === 403 && /quota/i.test(body)) {
+      throw new Error("YouTube API 일일 쿼터를 초과했습니다. 내일 다시 시도해주세요.");
+    }
     throw new Error(`YouTube API ${path} failed: ${res.status} ${body}`);
   }
   return res.json() as Promise<T>;

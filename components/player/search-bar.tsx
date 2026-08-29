@@ -86,8 +86,10 @@ export default function SearchBar() {
         durationMs: result.durationMs,
         albumArtUrl: result.artworkUrl,
       };
-    } catch {
-      setResolveError("재생 가능한 소스를 찾지 못했습니다");
+    } catch (error) {
+      // Surface the server's actual message (e.g. a quota-exceeded notice)
+      // instead of flattening every failure into the same generic string.
+      setResolveError(error instanceof Error ? error.message : "재생 가능한 소스를 찾지 못했습니다");
       return null;
     } finally {
       setResolvingId(null);

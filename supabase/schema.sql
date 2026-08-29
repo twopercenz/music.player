@@ -33,3 +33,15 @@ begin
     alter table library add constraint library_duration_positive check (duration_ms > 0);
   end if;
 end $$;
+
+-- Caches the result of /api/resolve's YouTube Data API matching (100+1
+-- quota units per call — the free 10k/day quota doesn't go far). Keyed by
+-- lower(artist) || '|' || lower(title) || '|' || round(duration_ms/1000) —
+-- see lib/resolve-cache.ts, the only place this key is built, to keep the
+-- format in exactly one place.
+create table if not exists resolve_cache (
+  cache_key text primary key,
+  video_id text not null,
+  resolved_at timestamptz not null default now()
+);
+alter table resolve_cache enable row level security;
