@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
 import { libraryRowToTrack, type LibraryRow, type YoutubeTrack } from "@/lib/types";
 
+// GET takes no request arg and uses no dynamic API, so Next would otherwise
+// statically optimize it — baking in the build-time Supabase response and
+// never refreshing, plus failing the build outright if SUPABASE_URL isn't
+// set in the build container.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
