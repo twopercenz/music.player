@@ -49,6 +49,47 @@ export interface LibraryRow {
   added_at: string;
 }
 
+export const VIDEO_ID_PATTERN = /^[\w-]{11}$/;
+
+/**
+ * Validates an arbitrary JSON body as a YoutubeTrack before it's trusted
+ * (e.g. written to Supabase in app/api/library/route.ts). No schema
+ * library — this project deliberately has zero extra dependencies, and the
+ * shape is simple enough that hand-rolling it is cheap and dependency-free.
+ */
+export function parseYoutubeTrack(input: unknown): YoutubeTrack | null {
+  if (typeof input !== "object" || input === null) return null;
+  const t = input as Record<string, unknown>;
+
+  if (t.source !== "youtube") return null;
+  if (typeof t.videoId !== "string" || !VIDEO_ID_PATTERN.test(t.videoId)) return null;
+
+  if (typeof t.title !== "string") return null;
+  const title = t.title.trim();
+  if (title.length < 1 || title.length > 300) return null;
+
+  if (typeof t.artist !== "string") return null;
+  const artist = t.artist.trim();
+  if (artist.length < 1 || artist.length > 300) return null;
+
+  if (typeof t.durationMs !== "number" || !Number.isFinite(t.durationMs)) return null;
+  if (t.durationMs <= 0 || t.durationMs > 24 * 60 * 60 * 1000) return null;
+
+  if (t.albumArtUrl !== undefined) {
+    if (typeof t.albumArtUrl !== "string") return null;
+    if (t.albumArtUrl.length > 1000 || !t.albumArtUrl.startsWith("https://")) return null;
+  }
+
+  return {
+    source: "youtube",
+    videoId: t.videoId,
+    title,
+    artist,
+    durationMs: t.durationMs,
+    albumArtUrl: t.albumArtUrl as string | undefined,
+  };
+}
+
 export function libraryRowToTrack(row: LibraryRow): YoutubeTrack {
   return {
     source: "youtube",

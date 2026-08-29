@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase";
-import { libraryRowToTrack, type LibraryRow, type YoutubeTrack } from "@/lib/types";
+import { libraryRowToTrack, parseYoutubeTrack, VIDEO_ID_PATTERN, type LibraryRow } from "@/lib/types";
 
 // GET takes no request arg and uses no dynamic API, so Next would otherwise
 // statically optimize it — baking in the build-time Supabase response and
@@ -24,8 +24,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const track = (await request.json().catch(() => null)) as YoutubeTrack | null;
-  if (!track || track.source !== "youtube") {
+  const body = await request.json().catch(() => null);
+  const track = parseYoutubeTrack(body);
+  if (!track) {
     return NextResponse.json({ error: "invalid track" }, { status: 400 });
   }
 
@@ -51,7 +52,9 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const videoId = request.nextUrl.searchParams.get("videoId");
-  if (!videoId) return NextResponse.json({ error: "missing videoId" }, { status: 400 });
+  if (!videoId || !VIDEO_ID_PATTERN.test(videoId)) {
+    return NextResponse.json({ error: "missing videoId" }, { status: 400 });
+  }
 
   const supabase = getSupabaseServerClient();
   const { error } = await supabase.from("library").delete().eq("video_id", videoId);

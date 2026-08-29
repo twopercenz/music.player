@@ -21,3 +21,15 @@ create index if not exists library_added_at_idx on library (added_at desc);
 -- secret key from our own server-side API routes (lib/supabase.ts) — never
 -- directly from the browser.
 alter table library enable row level security;
+
+-- Added after the table already existed elsewhere, so it's a separate
+-- `alter` rather than folded into the `create table` above. Postgres has no
+-- `add constraint if not exists`, so this is wrapped to be safe to re-run.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'library_duration_positive'
+  ) then
+    alter table library add constraint library_duration_positive check (duration_ms > 0);
+  end if;
+end $$;
