@@ -21,6 +21,16 @@ function toHex(buffer: ArrayBuffer): string {
     .join("");
 }
 
+// Mixed into the signed session message so that changing SITE_PASSWORD
+// invalidates every previously-issued cookie — otherwise a 30-day session
+// token keeps working even after the password it was granted under changes.
+async function passwordFingerprint(): Promise<string> {
+  const expected = process.env.SITE_PASSWORD;
+  if (!expected) throw new Error("SITE_PASSWORD is not set");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(expected));
+  return toHex(digest).slice(0, 16);
+}
+
 // `candidate === expected` short-circuits on the first differing byte, which
 // leaks how many leading characters were guessed correctly via response
 // timing. HMAC both sides first (fixed-length output regardless of input
@@ -45,7 +55,8 @@ export async function checkPassword(candidate: string): Promise<boolean> {
 export async function createSessionToken(): Promise<string> {
   const expiresAt = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
   const key = await hmacKey();
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(expiresAt)));
+  const message = `${expiresAt}.${await passwordFingerprint()}`;
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
   return `${expiresAt}.${toHex(signature)}`;
 }
 
@@ -58,10 +69,11 @@ export async function verifySessionToken(token: string | undefined): Promise<boo
   if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
 
   const key = await hmacKey();
+  const message = `${expiresAtStr}.${await passwordFingerprint()}`;
   // crypto.subtle.verify does a constant-time comparison internally, unlike
   // signing-and-comparing-hex-strings-with-=== (a theoretical oracle for
   // forging a signature).
   const sigBytes = Uint8Array.from(signatureHex.match(/../g) ?? [], (h) => parseInt(h, 16));
   if (sigBytes.length !== 32) return false;
-  return crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(expiresAtStr));
+  return crypto.subtle.verify("HMAC", key, sigBytes, new TextEncoder().encode(message));
 }

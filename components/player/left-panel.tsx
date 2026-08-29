@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import {
+  LogOut,
   Pause,
   Play,
   Repeat,
@@ -23,6 +25,7 @@ const NEXT_REPEAT_MODE: Record<RepeatMode, RepeatMode> = {
 };
 
 export default function LeftPanel() {
+  const router = useRouter();
   const {
     current,
     displayArt,
@@ -144,6 +147,18 @@ export default function LeftPanel() {
           className="mp-seekbar w-full"
         />
       </div>
+
+      <button
+        onClick={async () => {
+          await fetch("/api/logout", { method: "POST" });
+          router.replace("/login");
+        }}
+        className="flex items-center gap-1.5 text-[11px] text-white/25 transition hover:text-white/60"
+        title="로그아웃"
+      >
+        <LogOut className="h-3 w-3" />
+        로그아웃
+      </button>
     </div>
   );
 }
