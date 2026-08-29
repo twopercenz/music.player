@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveTrackAudio } from "@/lib/resolve-audio";
+import { cacheAudio } from "@/lib/db/indexeddb";
 import { fetcher } from "@/lib/utils";
 import useLocalStorage from "@/lib/hooks/use-local-storage";
 import { extractDominantColors, type DominantColors } from "@/lib/color";
@@ -78,6 +79,19 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         objectUrlRef.current = resolved.url.startsWith("blob:") ? resolved.url : null;
 
         audio.src = resolved.url;
+
+        // Kick off a background copy into the IndexedDB cache so a replay
+        // (this session or after a reload) skips the network entirely. By
+        // the time this fetch reaches the server, the extraction above has
+        // usually already populated the server's own tmp cache, so it reads
+        // a file instead of running yt-dlp+ffmpeg a second time.
+        if (track.source === "youtube" && !resolved.url.startsWith("blob:")) {
+          void fetch(resolved.url)
+            .then((r) => (r.ok ? r.blob() : null))
+            .then((b) => b && cacheAudio(track.videoId, b))
+            .catch(() => {});
+        }
+
         await audio.play();
         setIsPlaying(true);
         setResolveStatus("ready");

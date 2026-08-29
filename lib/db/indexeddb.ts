@@ -103,6 +103,8 @@ function recordToTrack(record: LocalTrackRecord): LocalTrack {
 
 // ---- Cache for audio extracted server-side from YouTube (never persisted server-side) ----
 
+const MAX_AUDIO_CACHE_BYTES = 1024 * 1024 * 1024; // 1GB
+
 export async function getCachedAudioUrl(videoId: string): Promise<string | null> {
   const db = await getDb();
   const record = await db.get("audioCache", videoId);
@@ -112,5 +114,19 @@ export async function getCachedAudioUrl(videoId: string): Promise<string | null>
 export async function cacheAudio(videoId: string, blob: Blob): Promise<string> {
   const db = await getDb();
   await db.put("audioCache", { videoId, blob, cachedAt: Date.now() });
+  await evictAudioCacheIfOverBudget(db);
   return URL.createObjectURL(blob);
+}
+
+async function evictAudioCacheIfOverBudget(db: IDBPDatabase<MusicPlayerDB>): Promise<void> {
+  const records = await db.getAll("audioCache");
+  let total = records.reduce((sum, record) => sum + record.blob.size, 0);
+  if (total <= MAX_AUDIO_CACHE_BYTES) return;
+
+  const oldestFirst = records.sort((a, b) => a.cachedAt - b.cachedAt);
+  for (const record of oldestFirst) {
+    if (total <= MAX_AUDIO_CACHE_BYTES) break;
+    await db.delete("audioCache", record.videoId);
+    total -= record.blob.size;
+  }
 }

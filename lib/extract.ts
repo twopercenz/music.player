@@ -1,9 +1,10 @@
 import "server-only";
 import { spawn } from "node:child_process";
-import { Readable } from "node:stream";
-import { existsSync, copyFileSync } from "node:fs";
+import { PassThrough, Readable } from "node:stream";
+import { createWriteStream, existsSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { commitCacheWrite, discardCacheWrite, getCacheWritePath } from "./audio-cache";
 
 /**
  * YouTube increasingly answers yt-dlp with "Sign in to confirm you're not a
@@ -249,5 +250,48 @@ export async function extractAudioStream(
     ffmpeg.once("error", onFfmpegSpawnError);
   });
 
-  return Readable.toWeb(ffmpeg.stdout) as ReadableStream<Uint8Array>;
+  // Tee ffmpeg's output: one copy streams to the client as before, the other
+  // is written to the server-side tmp cache (see lib/audio-cache.ts) so a
+  // second request for the same videoId — from a page reload, or from the
+  // client's own background IndexedDB-caching fetch (see resolve-audio.ts) —
+  // reads a file instead of re-running yt-dlp+ffmpeg.
+  const clientStream = new PassThrough();
+  const cacheWritePath = getCacheWritePath(videoId);
+  const cacheWriteStream = createWriteStream(cacheWritePath);
+
+  let ffmpegExitCode: number | null = null;
+  let cacheWriteSettled = false;
+  const finalizeCache = () => {
+    if (ffmpegExitCode === null || !cacheWriteSettled) return;
+    if (ffmpegExitCode === 0) commitCacheWrite(videoId);
+    else discardCacheWrite(videoId);
+  };
+  ffmpeg.once("close", (code) => {
+    ffmpegExitCode = code ?? -1;
+    finalizeCache();
+  });
+  cacheWriteStream.once("finish", () => {
+    cacheWriteSettled = true;
+    finalizeCache();
+  });
+  cacheWriteStream.once("error", (err) => {
+    console.warn(`audio cache write failed for ${videoId}: ${err.message}`);
+    cacheWriteSettled = true;
+    discardCacheWrite(videoId);
+  });
+
+  ffmpeg.stdout.on("data", (chunk) => {
+    clientStream.write(chunk);
+    if (!cacheWriteStream.destroyed) cacheWriteStream.write(chunk);
+  });
+  ffmpeg.stdout.on("end", () => {
+    clientStream.end();
+    if (!cacheWriteStream.destroyed) cacheWriteStream.end();
+  });
+  ffmpeg.stdout.on("error", (err) => {
+    clientStream.destroy(err);
+    cacheWriteStream.destroy();
+  });
+
+  return Readable.toWeb(clientStream) as ReadableStream<Uint8Array>;
 }

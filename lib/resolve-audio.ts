@@ -20,9 +20,11 @@ export interface ResolvedAudio {
  * them (see lib/extract.ts), and <audio src="..."> buffers/plays that
  * progressively on its own, so playback starts as soon as the first couple
  * seconds of audio exist instead of after the entire (multi-minute) song has
- * finished extracting. The trade-off is that a fresh play isn't written to
- * the IndexedDB cache — only tracks that got a full Blob before (or that a
- * future background-caching pass adds) hit the fast path above.
+ * finished extracting. A fresh play still ends up in the IndexedDB cache —
+ * hooks/use-player.ts kicks off a second, background fetch of the same URL
+ * right after playback starts, and by then the server's own tmp cache (see
+ * lib/audio-cache.ts) usually means that fetch reads a file instead of
+ * running yt-dlp+ffmpeg a second time.
  */
 export async function resolveTrackAudio(track: Track): Promise<ResolvedAudio> {
   if (track.source === "local") {
