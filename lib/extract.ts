@@ -79,7 +79,10 @@ function summarizeYtDlpError(stderr: string): string {
  * caller (api/extract) streams this straight to the client, which caches it
  * in IndexedDB.
  */
-export async function extractAudioStream(videoId: string): Promise<ReadableStream<Uint8Array>> {
+export async function extractAudioStream(
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
   const ytDlp = spawn("yt-dlp", [
@@ -144,6 +147,32 @@ export async function extractAudioStream(videoId: string): Promise<ReadableStrea
     if (code !== 0) ffmpeg.stdin.end();
   });
 
+  // Neither child process gets killed on its own — the client disconnecting
+  // (track switch), the safety timeout firing, or one of the two processes
+  // failing all used to leave the other one running to completion, which
+  // OOMs a free-tier container after a handful of track switches.
+  let killed = false;
+  const killAll = () => {
+    if (killed) return;
+    killed = true;
+    ytDlp.kill("SIGKILL");
+    ffmpeg.kill("SIGKILL");
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      killAll();
+      throw new Error("요청이 취소되었습니다.");
+    }
+    signal.addEventListener("abort", killAll, { once: true });
+  }
+
+  // Once ffmpeg exits (success or failure), yt-dlp has no reason to keep
+  // running even if it's still mid-download.
+  ffmpeg.once("close", () => {
+    ytDlp.kill("SIGKILL");
+  });
+
   // A fixed timeout can't tell success from "still working" — yt-dlp's own
   // failures can take anywhere from milliseconds to several seconds (it
   // retries across the player_client list above before giving up). So
@@ -172,6 +201,7 @@ export async function extractAudioStream(videoId: string): Promise<ReadableStrea
       if (settled) return;
       settled = true;
       cleanup();
+      killAll();
       reject(err);
     };
 

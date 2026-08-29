@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const stream = await extractAudioStream(videoId);
+    const stream = await extractAudioStream(videoId, request.signal);
     return new Response(stream, {
       headers: {
         "Content-Type": "audio/mpeg",
