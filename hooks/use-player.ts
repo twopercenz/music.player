@@ -25,6 +25,11 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [resolveStatus, setResolveStatus] = useState<ResolveStatus>("idle");
   const [resolveError, setResolveError] = useState<string | null>(null);
+  // Only a cache hit (a blob: URL — local file or IndexedDB audio cache) is
+  // seekable: the live extraction stream from /api/extract has no
+  // Content-Length/Range support, so <audio> can't jump ahead of what's
+  // already buffered.
+  const [seekable, setSeekable] = useState(false);
 
   const [volume, setVolume] = useLocalStorage("mp:volume", 0.8);
   const [shuffle, setShuffle] = useLocalStorage("mp:shuffle", false);
@@ -67,6 +72,7 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
       audio.load();
       setIsPlaying(false);
       setCurrentTimeMs(0);
+      setSeekable(false);
 
       setCurrentIndex(index);
       setResolveStatus("resolving");
@@ -74,18 +80,20 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
 
       try {
         const resolved = await resolveTrackAudio(track);
+        const isCacheHit = resolved.url.startsWith("blob:");
 
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = resolved.url.startsWith("blob:") ? resolved.url : null;
+        objectUrlRef.current = isCacheHit ? resolved.url : null;
 
         audio.src = resolved.url;
+        setSeekable(isCacheHit);
 
         // Kick off a background copy into the IndexedDB cache so a replay
         // (this session or after a reload) skips the network entirely. By
         // the time this fetch reaches the server, the extraction above has
         // usually already populated the server's own tmp cache, so it reads
         // a file instead of running yt-dlp+ffmpeg a second time.
-        if (track.source === "youtube" && !resolved.url.startsWith("blob:")) {
+        if (track.source === "youtube" && !isCacheHit) {
           void fetch(resolved.url)
             .then((r) => (r.ok ? r.blob() : null))
             .then((b) => b && cacheAudio(track.videoId, b))
@@ -289,6 +297,7 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
     durationMs: current?.durationMs ?? 0,
     resolveStatus,
     resolveError,
+    seekable,
     volume,
     setVolume,
     shuffle,

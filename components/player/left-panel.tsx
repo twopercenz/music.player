@@ -32,6 +32,7 @@ export default function LeftPanel() {
     durationMs,
     resolveStatus,
     resolveError,
+    seekable,
     shuffle,
     setShuffle,
     repeatMode,
@@ -83,7 +84,9 @@ export default function LeftPanel() {
           max={Math.max(durationMs, 1)}
           value={Math.min(currentTimeMs, durationMs)}
           onChange={(e) => seekTo(Number(e.target.value))}
-          className="mp-seekbar w-full"
+          disabled={!seekable}
+          title={seekable ? undefined : "첫 재생 중에는 이동할 수 없습니다"}
+          className="mp-seekbar w-full disabled:opacity-40"
         />
         <div className="mt-1 flex justify-between text-[11px] text-white/40">
           <span>{formatDuration(currentTimeMs)}</span>
