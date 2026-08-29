@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { extractAudioStream } from "@/lib/extract";
+import { extractAudioStream, TooManyExtractionsError } from "@/lib/extract";
 
 // Needs child_process (yt-dlp/ffmpeg) — must run in the Node.js runtime, not Edge.
 export const runtime = "nodejs";
@@ -20,6 +20,12 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof TooManyExtractionsError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 429, headers: { "Retry-After": "10" } },
+      );
+    }
     console.error(`extract failed for ${videoId}`, error);
     const message = error instanceof Error ? error.message : "오디오 추출에 실패했습니다.";
     return NextResponse.json({ error: message }, { status: 502 });

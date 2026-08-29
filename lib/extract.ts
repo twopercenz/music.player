@@ -56,6 +56,19 @@ function getCookieArgs(): string[] {
   return [];
 }
 
+// /api/extract spawns yt-dlp (network-bound download) + ffmpeg (CPU-bound
+// encode) per request with no cap — a handful of concurrent tabs is enough
+// to take down a free-tier container. Cap it globally per server instance.
+const MAX_CONCURRENT_EXTRACTIONS = 2;
+let activeExtractions = 0;
+
+export class TooManyExtractionsError extends Error {
+  constructor() {
+    super("동시에 처리할 수 있는 추출 수를 초과했습니다. 잠시 후 다시 시도해주세요.");
+    this.name = "TooManyExtractionsError";
+  }
+}
+
 function summarizeYtDlpError(stderr: string): string {
   if (/sign in to confirm/i.test(stderr)) {
     return "YouTube가 봇 감지로 요청을 막았습니다. YTDLP_COOKIES_FILE 설정이 필요합니다 (README 참고).";
@@ -83,6 +96,17 @@ export async function extractAudioStream(
   videoId: string,
   signal?: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
+  if (activeExtractions >= MAX_CONCURRENT_EXTRACTIONS) {
+    throw new TooManyExtractionsError();
+  }
+  activeExtractions++;
+  let slotReleased = false;
+  const releaseSlot = () => {
+    if (slotReleased) return;
+    slotReleased = true;
+    activeExtractions--;
+  };
+
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
   const ytDlp = spawn("yt-dlp", [
@@ -157,6 +181,7 @@ export async function extractAudioStream(
     killed = true;
     ytDlp.kill("SIGKILL");
     ffmpeg.kill("SIGKILL");
+    releaseSlot();
   };
 
   if (signal) {
@@ -168,10 +193,9 @@ export async function extractAudioStream(
   }
 
   // Once ffmpeg exits (success or failure), yt-dlp has no reason to keep
-  // running even if it's still mid-download.
-  ffmpeg.once("close", () => {
-    ytDlp.kill("SIGKILL");
-  });
+  // running even if it's still mid-download — and the concurrency slot is
+  // free either way.
+  ffmpeg.once("close", killAll);
 
   // A fixed timeout can't tell success from "still working" — yt-dlp's own
   // failures can take anywhere from milliseconds to several seconds (it
