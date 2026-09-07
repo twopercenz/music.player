@@ -1,5 +1,4 @@
 import "./globals.css";
-import cx from "classnames";
 import { sfPro, inter } from "./fonts";
 
 export const metadata = {
@@ -11,7 +10,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body className={cx(sfPro.variable, inter.variable, "bg-black")}>{children}</body>
+      <body className={`${sfPro.variable} ${inter.variable} bg-black`}>{children}</body>
     </html>
   );
 }

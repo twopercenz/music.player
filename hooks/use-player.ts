@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveTrackAudio } from "@/lib/resolve-audio";
 import { cacheAudio } from "@/lib/db/indexeddb";
 import { fetcher } from "@/lib/utils";
-import useLocalStorage from "@/lib/hooks/use-local-storage";
+import useLocalStorage from "@/hooks/use-local-storage";
 import { extractDominantColors, type DominantColors } from "@/lib/color";
 import type { LyricsResult, RepeatMode, Track } from "@/lib/types";
 import { trackKey } from "@/lib/types";

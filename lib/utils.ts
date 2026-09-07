@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 export async function fetcher<JSON = any>(
   input: RequestInfo,
   init?: RequestInit,
@@ -31,8 +24,3 @@ export function formatDuration(ms: number): string {
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
-
-export const truncate = (str: string, length: number) => {
-  if (!str || str.length <= length) return str;
-  return `${str.slice(0, length)}...`;
-};
