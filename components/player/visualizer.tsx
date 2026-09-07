@@ -17,9 +17,11 @@ const LINE_COLOR = "255 255 255";
 export default function Visualizer({
   analyserRef,
   accentColor,
+  isPlaying,
 }: {
   analyserRef: React.RefObject<AnalyserNode | null>;
   accentColor: DominantColors | null;
+  isPlaying: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
@@ -30,28 +32,34 @@ export default function Visualizer({
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    let raf: number;
+    let raf: number | null = null;
     const timeData = new Uint8Array(256);
     const freqData = new Uint8Array(256);
 
+    // getBoundingClientRect() reports 0x0 if the canvas mounts while its
+    // panel is hidden (e.g. the lyrics view is showing instead) — a plain
+    // window "resize" listener never fires again once that happens.
+    // ResizeObserver reports the real size as soon as the panel actually
+    // becomes visible, regardless of what triggered the layout change.
     const resize = () => {
       const { width, height } = canvas.getBoundingClientRect();
       canvas.width = width * devicePixelRatio;
       canvas.height = height * devicePixelRatio;
     };
     resize();
-    window.addEventListener("resize", resize);
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(canvas);
 
     const accent = accentColor?.primary ?? "180 180 180";
 
-    const draw = () => {
-      raf = requestAnimationFrame(draw);
+    const drawFrame = () => {
       const { width, height } = canvas;
       ctx.clearRect(0, 0, width, height);
 
       const analyser = analyserRef.current;
       if (!analyser) {
         drawIdleLine(ctx, width, height);
+        updateAndDrawParticles(ctx, particlesRef.current, accent);
         return;
       }
 
@@ -86,12 +94,39 @@ export default function Visualizer({
       updateAndDrawParticles(ctx, particlesRef.current, accent);
     };
 
-    draw();
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
+    const loop = () => {
+      drawFrame();
+      raf = requestAnimationFrame(loop);
     };
-  }, [analyserRef, accentColor]);
+
+    // Runs continuously only while actually audible and visible — a paused
+    // track or a backgrounded tab used to keep spinning requestAnimationFrame
+    // (and re-rendering the canvas) for nothing. particlesRef/bassHistoryRef
+    // live outside this effect, so stopping and restarting the loop doesn't
+    // reset them — a burst picks back up mid-flight instead of popping back
+    // in from scratch.
+    const sync = () => {
+      const shouldRun = isPlaying && !document.hidden;
+      if (shouldRun) {
+        if (raf === null) loop();
+      } else {
+        if (raf !== null) {
+          cancelAnimationFrame(raf);
+          raf = null;
+        }
+        drawFrame(); // freeze on one last frame instead of leaving a stale/blank canvas
+      }
+    };
+
+    sync();
+    document.addEventListener("visibilitychange", sync);
+
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [analyserRef, accentColor, isPlaying]);
 
   return <canvas ref={canvasRef} className="h-full w-full" />;
 }

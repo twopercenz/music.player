@@ -14,6 +14,7 @@ export default function RightPanel() {
     setRightPanelMode,
     analyserRef,
     dominantColors,
+    isPlaying,
   } = usePlayerContext();
 
   const hasLyrics = !!lyrics?.synced?.length;
@@ -59,7 +60,11 @@ export default function RightPanel() {
               exit={{ opacity: 0 }}
               className="absolute inset-0"
             >
-              <Visualizer analyserRef={analyserRef} accentColor={dominantColors} />
+              <Visualizer
+                analyserRef={analyserRef}
+                accentColor={dominantColors}
+                isPlaying={isPlaying}
+              />
             </motion.div>
           )}
         </AnimatePresence>
