@@ -42,7 +42,12 @@ export async function searchItunesTracks(
   url.searchParams.set("term", query);
   url.searchParams.set("media", "music");
   url.searchParams.set("entity", "song");
-  url.searchParams.set("country", "KR");
+  // The iTunes Music Store never launched in South Korea (Apple Music
+  // streaming did, but that's a separate catalog) — entity=song against
+  // country=KR always returns resultCount 0. US has the deepest song
+  // catalog and still matches Korean-script terms fine (e.g. "아이유"
+  // resolves to IU's tracks), so search against that storefront instead.
+  url.searchParams.set("country", "US");
   url.searchParams.set("limit", String(limit));
 
   // Cache keyed by search term (Next dedupes on the full request URL), so
@@ -81,7 +86,8 @@ export async function findItunesMatch(
   url.searchParams.set("term", `${artist} ${title}`);
   url.searchParams.set("media", "music");
   url.searchParams.set("entity", "song");
-  url.searchParams.set("country", "KR");
+  // Same KR-has-no-song-catalog issue as searchItunesTracks above.
+  url.searchParams.set("country", "US");
   url.searchParams.set("limit", "5");
 
   // Album art practically never changes, so replaying the same track can
