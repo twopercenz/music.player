@@ -40,7 +40,9 @@ export async function fetchLyrics(
         track_name: title,
         duration: String(durationSeconds),
       }),
-    { headers: { "User-Agent": USER_AGENT }, cache: "no-store" },
+    // Synced lyrics for a given track don't change, so replaying the same
+    // song can reuse this instead of hitting lrclib again every time.
+    { headers: { "User-Agent": USER_AGENT }, next: { revalidate: 604_800 } },
   );
 
   if (exact.ok) {
@@ -56,7 +58,7 @@ export async function fetchLyrics(
   // Fall back to fuzzy search (exact `get` is strict about takes/edits/duration).
   const search = await fetch(
     `${BASE_URL}/search?` + new URLSearchParams({ artist_name: artist, track_name: title }),
-    { headers: { "User-Agent": USER_AGENT }, cache: "no-store" },
+    { headers: { "User-Agent": USER_AGENT }, next: { revalidate: 604_800 } },
   );
   if (!search.ok) return { synced: null, plain: null };
 

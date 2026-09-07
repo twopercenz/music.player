@@ -45,7 +45,10 @@ export async function searchItunesTracks(
   url.searchParams.set("country", "KR");
   url.searchParams.set("limit", String(limit));
 
-  const res = await fetch(url, { cache: "no-store" });
+  // Cache keyed by search term (Next dedupes on the full request URL), so
+  // this is safe even though results can change — worst case is a search
+  // result staying stale for up to an hour.
+  const res = await fetch(url, { next: { revalidate: 3600 } });
   if (!res.ok) throw new Error(`iTunes search failed: ${res.status}`);
 
   const { results } = (await res.json()) as ItunesSearchResponse;
@@ -81,7 +84,9 @@ export async function findItunesMatch(
   url.searchParams.set("country", "KR");
   url.searchParams.set("limit", "5");
 
-  const res = await fetch(url, { cache: "no-store" });
+  // Album art practically never changes, so replaying the same track can
+  // reuse this instead of hitting iTunes again every time.
+  const res = await fetch(url, { next: { revalidate: 604_800 } });
   if (!res.ok) return null;
 
   const { results } = (await res.json()) as ItunesSearchResponse;
