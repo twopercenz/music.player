@@ -12,28 +12,28 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
-    "@types/node": "18.11.18",
-    "@types/react": "18.2.24",
-    "@types/react-dom": "18.2.8",
-    "eslint": "8.31.0",
-    "eslint-config-next": "13.1.1",
     "framer-motion": "^8.5.5",
     "idb": "^8.0.0",
-    "lucide-react": "0.105.0-alpha.4",
-    "next": "14.3.0-canary.57",
+    "lucide-react": "1.42.0",
+    "next": "14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "typescript": "5.2.2",
     "use-debounce": "^9.0.4"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.6",
     "@tailwindcss/typography": "^0.5.10",
+    "@types/node": "20.19.43",
+    "@types/react": "18.2.24",
+    "@types/react-dom": "18.2.8",
     "autoprefixer": "^10.4.16",
+    "eslint": "8.31.0",
+    "eslint-config-next": "14.2.35",
     "postcss": "^8.4.31",
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.2.8",
-    "tailwindcss": "^3.3.3"
+    "tailwindcss": "^3.3.3",
+    "typescript": "5.2.2"
   },
   "packageManager": "bun@1.4.0",
   "trustedDependencies": [
