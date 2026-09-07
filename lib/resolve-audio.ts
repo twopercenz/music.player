@@ -11,20 +11,18 @@ export interface ResolvedAudio {
  * Resolves a Track to something an <audio> element can actually play.
  * - local tracks: read straight out of IndexedDB.
  * - youtube tracks: check the IndexedDB audio cache first, and only hit
- *   /api/extract (the expensive, yt-dlp-backed step) on a cache miss. There's
- *   no separate "matching" step anymore — search results already *are* the
- *   video that gets played.
+ *   /api/extract on a cache miss. There's no separate "matching" step
+ *   anymore — search results already *are* the video that gets played.
  *
  * A cache miss points straight at /api/extract instead of awaiting the whole
- * transcode as a Blob first: the route streams bytes out as ffmpeg produces
- * them (see lib/extract.ts), and <audio src="..."> buffers/plays that
- * progressively on its own, so playback starts as soon as the first couple
- * seconds of audio exist instead of after the entire (multi-minute) song has
- * finished extracting. A fresh play still ends up in the IndexedDB cache —
+ * thing as a Blob first: the route proxies bytes straight through from
+ * Invidious Companion's videoplayback stream (see lib/companion.ts) as they
+ * arrive, and <audio src="..."> buffers/plays that progressively on its own,
+ * so playback starts immediately instead of after the entire song has been
+ * fetched. A fresh play still ends up in the IndexedDB cache —
  * hooks/use-player.ts kicks off a second, background fetch of the same URL
- * right after playback starts, and by then the server's own tmp cache (see
- * lib/audio-cache.ts) usually means that fetch reads a file instead of
- * running yt-dlp+ffmpeg a second time.
+ * right after playback starts, so a replay skips the network (and Companion)
+ * entirely.
  */
 export async function resolveTrackAudio(track: Track): Promise<ResolvedAudio> {
   if (track.source === "local") {

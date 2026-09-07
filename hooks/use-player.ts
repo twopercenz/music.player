@@ -25,10 +25,10 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [resolveStatus, setResolveStatus] = useState<ResolveStatus>("idle");
   const [resolveError, setResolveError] = useState<string | null>(null);
-  // Only a cache hit (a blob: URL — local file or IndexedDB audio cache) is
-  // seekable: the live extraction stream from /api/extract has no
-  // Content-Length/Range support, so <audio> can't jump ahead of what's
-  // already buffered.
+  // /api/extract proxies Invidious Companion's own videoplayback stream
+  // (see lib/companion.ts), which supports Range from the first play — not
+  // just on a cache hit — so this only ever goes false momentarily while a
+  // new track is loading.
   const [seekable, setSeekable] = useState(false);
 
   const [volume, setVolume] = useLocalStorage("mp:volume", 0.8);
@@ -91,13 +91,12 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         const isCacheHit = resolved.url.startsWith("blob:");
 
         // <audio src="..."> can't read a failed request's JSON error body —
-        // a real yt-dlp/ffmpeg failure (private video, quota, etc.) just
+        // a real Companion failure (private video, region lock, etc.) just
         // shows up as the browser's generic "no supported source" error
-        // instead of the message lib/extract.ts actually classified it as.
+        // instead of the message lib/companion.ts actually classified it as.
         // Probing first (only for a fresh, non-cached URL — a blob: URL is
         // already-known-good data) gets a real answer before audio.src is
-        // ever set, without re-running the extraction: see the probe/reuse
-        // handoff in app/api/extract/route.ts + lib/extract.ts.
+        // ever set — see app/api/extract/route.ts.
         if (!isCacheHit) {
           const probeUrl = `${resolved.url}${resolved.url.includes("?") ? "&" : "?"}probe=1`;
           const probe = await fetch(probeUrl);
@@ -111,13 +110,13 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
         objectUrlRef.current = isCacheHit ? resolved.url : null;
 
         audio.src = resolved.url;
-        setSeekable(isCacheHit);
+        // Both a cache hit (blob:) and a fresh Companion-proxied stream
+        // support Range, so seeking works immediately either way.
+        setSeekable(true);
 
         // Kick off a background copy into the IndexedDB cache so a replay
-        // (this session or after a reload) skips the network entirely. By
-        // the time this fetch reaches the server, the extraction above has
-        // usually already populated the server's own tmp cache, so it reads
-        // a file instead of running yt-dlp+ffmpeg a second time.
+        // (this session or after a reload) skips the network — and
+        // Companion + the yt-dlp-era round trip to YouTube — entirely.
         if (track.source === "youtube" && !isCacheHit) {
           void fetch(resolved.url)
             .then((r) => (r.ok ? r.blob() : null))
