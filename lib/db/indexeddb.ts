@@ -79,6 +79,12 @@ export async function listLocalTracks(): Promise<LocalTrack[]> {
 export async function deleteLocalTrack(id: string): Promise<void> {
   const db = await getDb();
   await db.delete("localTracks", id);
+
+  const cachedArtUrl = artUrlCache.get(id);
+  if (cachedArtUrl) {
+    URL.revokeObjectURL(cachedArtUrl);
+    artUrlCache.delete(id);
+  }
 }
 
 /** Object URL for playback — caller should revoke it when the track changes. */
@@ -88,7 +94,20 @@ export async function getLocalTrackAudioUrl(id: string): Promise<string | null> 
   return record ? URL.createObjectURL(record.fileBlob) : null;
 }
 
+// listLocalTracks() runs (via hooks/use-library.ts's refresh()) on every add
+// or delete, and recordToTrack() used to call URL.createObjectURL() fresh
+// each time for every track's art — nobody ever revokes those, so the blob
+// URL count grows unbounded the more the library is used. Memoizing by id
+// means an unchanged track reuses the same URL instead of leaking a new one.
+const artUrlCache = new Map<string, string>();
+
 function recordToTrack(record: LocalTrackRecord): LocalTrack {
+  let albumArtUrl = artUrlCache.get(record.id);
+  if (!albumArtUrl && record.artBlob) {
+    albumArtUrl = URL.createObjectURL(record.artBlob);
+    artUrlCache.set(record.id, albumArtUrl);
+  }
+
   return {
     source: "local",
     id: record.id,
@@ -96,7 +115,7 @@ function recordToTrack(record: LocalTrackRecord): LocalTrack {
     artist: record.artist,
     album: record.album,
     durationMs: record.durationMs,
-    albumArtUrl: record.artBlob ? URL.createObjectURL(record.artBlob) : undefined,
+    albumArtUrl,
     addedAt: record.addedAt,
   };
 }

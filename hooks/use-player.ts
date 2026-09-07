@@ -53,6 +53,14 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [audioRef, volume]);
 
+  // load() already revokes the previous objectUrlRef before setting a new
+  // one on every track change, but nothing revoked the last one on unmount.
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
+
   // `load` takes the queue explicitly rather than closing over `queue` state, so
   // callers can set a new queue and load from it in the same tick (no stale reads).
   const load = useCallback(
