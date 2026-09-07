@@ -10,7 +10,14 @@ const useLocalStorage = <T>(
     // Retrieve from localStorage
     const item = window.localStorage.getItem(key);
     if (item) {
-      setStoredValue(JSON.parse(item));
+      try {
+        setStoredValue(JSON.parse(item));
+      } catch {
+        // Corrupted value (manual edit, an old/incompatible shape, etc.) —
+        // drop it and fall back to initialValue instead of throwing out of
+        // this effect and taking the whole render down with it.
+        window.localStorage.removeItem(key);
+      }
     }
   }, [key]);
 
