@@ -14,7 +14,7 @@ import {
   Volume1,
   VolumeX,
 } from "lucide-react";
-import { usePlayerContext } from "./player-context";
+import { usePlayerContext, usePlayerTime } from "./player-context";
 import { formatDuration } from "@/lib/utils";
 import type { RepeatMode } from "@/lib/types";
 
@@ -31,7 +31,6 @@ export default function LeftPanel() {
     displayArt,
     artwork,
     isPlaying,
-    currentTimeMs,
     durationMs,
     resolveStatus,
     resolveError,
@@ -80,22 +79,7 @@ export default function LeftPanel() {
       {resolveStatus === "resolving" && <p className="text-xs text-white/50">불러오는 중…</p>}
       {resolveStatus === "error" && <p className="text-xs text-red-300/90">{resolveError}</p>}
 
-      <div className="w-full max-w-md">
-        <input
-          type="range"
-          min={0}
-          max={Math.max(durationMs, 1)}
-          value={Math.min(currentTimeMs, durationMs)}
-          onChange={(e) => seekTo(Number(e.target.value))}
-          disabled={!seekable}
-          title={seekable ? undefined : "첫 재생 중에는 이동할 수 없습니다"}
-          className="mp-seekbar w-full disabled:opacity-40"
-        />
-        <div className="mt-1 flex justify-between text-[11px] text-white/40">
-          <span>{formatDuration(currentTimeMs)}</span>
-          <span>{formatDuration(durationMs)}</span>
-        </div>
-      </div>
+      <SeekBar durationMs={durationMs} seekable={seekable} seekTo={seekTo} />
 
       <div className="flex w-full max-w-md items-center justify-between">
         <button
@@ -159,6 +143,39 @@ export default function LeftPanel() {
         <LogOut className="h-3 w-3" />
         로그아웃
       </button>
+    </div>
+  );
+}
+
+// Split out from LeftPanel so only this subscribes to usePlayerTime()'s
+// ~4x/sec tick — see FIXES.md P2-1.
+function SeekBar({
+  durationMs,
+  seekable,
+  seekTo,
+}: {
+  durationMs: number;
+  seekable: boolean;
+  seekTo: (ms: number) => void;
+}) {
+  const currentTimeMs = usePlayerTime();
+
+  return (
+    <div className="w-full max-w-md">
+      <input
+        type="range"
+        min={0}
+        max={Math.max(durationMs, 1)}
+        value={Math.min(currentTimeMs, durationMs)}
+        onChange={(e) => seekTo(Number(e.target.value))}
+        disabled={!seekable}
+        title={seekable ? undefined : "첫 재생 중에는 이동할 수 없습니다"}
+        className="mp-seekbar w-full disabled:opacity-40"
+      />
+      <div className="mt-1 flex justify-between text-[11px] text-white/40">
+        <span>{formatDuration(currentTimeMs)}</span>
+        <span>{formatDuration(durationMs)}</span>
+      </div>
     </div>
   );
 }

@@ -9,7 +9,6 @@ import Visualizer from "./visualizer";
 export default function RightPanel() {
   const {
     lyrics,
-    currentTimeMs,
     effectiveRightPanelMode,
     rightPanelMode,
     setRightPanelMode,
@@ -50,7 +49,7 @@ export default function RightPanel() {
               exit={{ opacity: 0 }}
               className="absolute inset-0"
             >
-              <LyricsView lyrics={lyrics} currentTimeMs={currentTimeMs} />
+              <LyricsView lyrics={lyrics} />
             </motion.div>
           ) : (
             <motion.div

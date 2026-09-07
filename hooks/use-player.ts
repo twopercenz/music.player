@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveTrackAudio } from "@/lib/resolve-audio";
 import { cacheAudio } from "@/lib/db/indexeddb";
 import { fetcher } from "@/lib/utils";
@@ -304,35 +304,72 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
     : "visualizer";
 
   const displayArt = artwork?.artworkUrl ?? current?.albumArtUrl;
+  const durationMs = current?.durationMs ?? 0;
 
-  return {
-    queue,
-    current,
-    currentIndex,
-    isPlaying,
-    currentTimeMs,
-    durationMs: current?.durationMs ?? 0,
-    resolveStatus,
-    resolveError,
-    seekable,
-    volume,
-    setVolume,
-    shuffle,
-    setShuffle,
-    repeatMode,
-    setRepeatMode,
-    rightPanelMode,
-    setRightPanelMode,
-    effectiveRightPanelMode,
-    lyrics,
-    dominantColors,
-    artwork,
-    displayArt,
-    playTrack,
-    playQueue,
-    togglePlay,
-    next,
-    prev,
-    seekTo,
-  };
+  // Everything except currentTimeMs, memoized so its identity is stable
+  // across the ~4x/sec timeupdate tick below — see FIXES.md P2-1. Consumers
+  // that only need playback controls/metadata (usePlayerContext) then don't
+  // re-render on every tick; only usePlayerTime() does.
+  const player = useMemo(
+    () => ({
+      queue,
+      current,
+      currentIndex,
+      isPlaying,
+      durationMs,
+      resolveStatus,
+      resolveError,
+      seekable,
+      volume,
+      setVolume,
+      shuffle,
+      setShuffle,
+      repeatMode,
+      setRepeatMode,
+      rightPanelMode,
+      setRightPanelMode,
+      effectiveRightPanelMode,
+      lyrics,
+      dominantColors,
+      artwork,
+      displayArt,
+      playTrack,
+      playQueue,
+      togglePlay,
+      next,
+      prev,
+      seekTo,
+    }),
+    [
+      queue,
+      current,
+      currentIndex,
+      isPlaying,
+      durationMs,
+      resolveStatus,
+      resolveError,
+      seekable,
+      volume,
+      setVolume,
+      shuffle,
+      setShuffle,
+      repeatMode,
+      setRepeatMode,
+      rightPanelMode,
+      setRightPanelMode,
+      effectiveRightPanelMode,
+      lyrics,
+      dominantColors,
+      artwork,
+      displayArt,
+      playTrack,
+      playQueue,
+      togglePlay,
+      next,
+      prev,
+      seekTo,
+    ],
+  );
+
+  return { player, currentTimeMs };
 }

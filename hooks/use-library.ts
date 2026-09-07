@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetcher } from "@/lib/utils";
 import { listLocalTracks, addLocalTrack, deleteLocalTrack } from "@/lib/db/indexeddb";
 import type { LocalTrack, YoutubeTrack, Track } from "@/lib/types";
@@ -57,17 +57,36 @@ export function useLibrary() {
     [refresh],
   );
 
-  const library: Track[] = [...youtubeTracks, ...localTracks];
+  const library: Track[] = useMemo(
+    () => [...youtubeTracks, ...localTracks],
+    [youtubeTracks, localTracks],
+  );
 
-  return {
-    library,
-    youtubeTracks,
-    localTracks,
-    loading,
-    refresh,
-    addYoutubeTrack,
-    removeYoutubeTrack,
-    uploadLocalFile,
-    removeLocalTrack,
-  };
+  // Memoized so PlayerProvider's context value (components/player/player-context.tsx)
+  // keeps a stable identity across unrelated re-renders (e.g. the playback
+  // time tick) — see FIXES.md P2-1.
+  return useMemo(
+    () => ({
+      library,
+      youtubeTracks,
+      localTracks,
+      loading,
+      refresh,
+      addYoutubeTrack,
+      removeYoutubeTrack,
+      uploadLocalFile,
+      removeLocalTrack,
+    }),
+    [
+      library,
+      youtubeTracks,
+      localTracks,
+      loading,
+      refresh,
+      addYoutubeTrack,
+      removeYoutubeTrack,
+      uploadLocalFile,
+      removeLocalTrack,
+    ],
+  );
 }

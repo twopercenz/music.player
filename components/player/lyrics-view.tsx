@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
+import { usePlayerTime } from "./player-context";
 import type { LyricsResult } from "@/lib/types";
 
-export default function LyricsView({
-  lyrics,
-  currentTimeMs,
-}: {
-  lyrics: LyricsResult | null;
-  currentTimeMs: number;
-}) {
+export default function LyricsView({ lyrics }: { lyrics: LyricsResult | null }) {
+  // Its own subscription (rather than a currentTimeMs prop from RightPanel)
+  // keeps the ~4x/sec tick's re-render scoped to just this component instead
+  // of RightPanel and its Visualizer sibling — see FIXES.md P2-1.
+  const currentTimeMs = usePlayerTime();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLParagraphElement>(null);
 
