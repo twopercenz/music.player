@@ -119,6 +119,11 @@ useEffect(() => {
 
 ## P2-5. ffmpeg 불필요한 재인코딩
 
+**해당 없음 (superseded)** — `lib/extract.ts`의 yt-dlp+ffmpeg 파이프라인 자체가 Invidious
+Companion으로 교체되면서 재인코딩이 사라졌다 (`lib/companion.ts`, `app/api/extract/route.ts`).
+Companion이 원본 포맷(대개 m4a/opus)의 오디오 URL을 그대로 프록시하므로 이 항목이 다루려던
+문제가 근본적으로 없어졌다. 아래 내용은 옛 아키텍처 기준으로 기록만 남겨둔다.
+
 ### 증상
 `lib/extract.ts`가 항상 mp3 192k로 재인코딩한다. YouTube 오디오는 대부분 이미 opus/m4a이므로 무료 티어 CPU에서 이게 콜드스타트 체감의 상당 부분을 차지한다.
 
@@ -240,7 +245,10 @@ CSP는 `framer-motion`의 인라인 스타일, iTunes 아트워크 도메인(`is
    - `node_modules` 통째 복사 제거
    - `CMD ["bun", "server.js"]`
 2. **root로 실행되는 문제** — runner 스테이지 `CMD` 앞에 `USER bun` 추가 (oven/bun 이미지에 `bun` 유저가 이미 존재). `/app` 소유권을 맞춰줄 것.
-3. **yt-dlp 버전 미고정** — `latest`에서 받으면 재현 불가능하고 체크섬 검증도 없다. 특정 릴리스 태그로 핀하고 SHA256 검증 추가. 상단에 `ARG YTDLP_VERSION=...`으로 두어 업데이트를 쉽게.
+3. **yt-dlp 버전 미고정** — ~~`latest`에서 받으면 재현 불가능하고 체크섬 검증도 없다. 특정 릴리스 태그로 핀하고 SHA256 검증 추가. 상단에 `ARG YTDLP_VERSION=...`으로 두어 업데이트를 쉽게.~~
+   **해당 없음 (superseded)** — Invidious Companion 도입으로 yt-dlp 바이너리 자체가
+   Dockerfile에서 사라졌다(P2-5 참고). 대신 `docker-compose.yml`의
+   `invidious_companion` 이미지 태그를 고정한다.
 4. `HEALTHCHECK` 추가 (`curl -f http://localhost:3000/login`)
 
 **주의**: `output: "standalone"`은 `lib/extract.ts`가 `spawn`하는 외부 바이너리와는 무관하지만, `server-only` 패키지 등 일부 의존성 추적에 영향을 줄 수 있다. 빌드 후 **실제 컨테이너를 띄워 전 경로를 수동 확인할 것.**
