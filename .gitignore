@@ -28,7 +28,8 @@ yarn-error.log*
 .env*.local
 .env
 
-# yt-dlp cookies — a real login session, never commit this
+# a real YouTube login session if it exists locally (no longer used by the
+# app itself — yt-dlp is gone — but never commit it if it's lying around)
 cookies.txt
 
 # vercel
@@ -41,4 +42,3 @@ next-env.d.ts
 # misc
 .vscode
 PRIVATE.md
-cookies.txt

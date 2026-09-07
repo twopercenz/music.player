@@ -1,0 +1,37 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      COMPANION_URL: http://invidious_companion:8282
+    depends_on:
+      - invidious_companion
+    restart: unless-stopped
+
+  # Resolves YouTube audio streams for lib/companion.ts — replaces the old
+  # in-process yt-dlp + ffmpeg extraction. See:
+  # https://github.com/iv-org/invidious-companion/wiki
+  invidious_companion:
+    image: quay.io/invidious/invidious-companion:2026.09.05-6386b18
+    environment:
+      # Must be exactly 16 alphanumeric characters, and must match
+      # COMPANION_SECRET_KEY in .env — this is the Bearer token `web` sends,
+      # and Companion validates every /youtubei/v1/* call against it.
+      # Generate one with: openssl rand -hex 8
+      SERVER_SECRET_KEY: ${COMPANION_SECRET_KEY:?Set COMPANION_SECRET_KEY in .env to a 16-char alphanumeric string}
+    volumes:
+      # PO-token/session cache, so a container restart doesn't need to remint
+      # from scratch. Not bind-mounted to the host — a named volume is fine
+      # since none of it needs to survive a full `docker compose down -v`.
+      - invidious_companion_cache:/var/tmp
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  invidious_companion_cache:
