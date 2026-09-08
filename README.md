@@ -64,9 +64,25 @@ bun dev
 서버의 IP가 이미 강하게 차단된 클라우드 대역이면 발급이 계속 실패할 수 있음(컨테이너 로그에
 `Failed to validate PO token: all validation attempts returned non-200 status codes`가
 반복됨 — 그동안 `/api/extract`는 "재생 서버가 아직 준비 중입니다" 에러를 돌려줌). 이 경우
-Companion의 `PROXY` 환경변수([config.ts](https://github.com/iv-org/invidious-companion/blob/master/src/lib/helpers/config.ts)
-참고)로 주거용 IP 프록시를 태우는 것 외엔 뾰족한 수가 없음 — 배포 전에 실제 환경에서 한 번
-확인해볼 것.
+Companion의 `PROXY` 환경변수 외엔 뾰족한 수가 없음 — 배포 전에 실제 환경에서 한 번 확인해볼 것.
+
+**PROXY 설정법**: [config.ts](https://github.com/iv-org/invidious-companion/blob/master/src/lib/helpers/config.ts)가
+`PROXY` 환경변수를 읽어서 `getFetchClient`로 넘기는데, 이게 PO 토큰 발급뿐 아니라
+`videoPlaybackProxy.ts`의 실제 오디오 바이트 요청(googlevideo.com)에도 그대로 쓰임 — 즉 재생하는
+곡의 트래픽이 전부 이 프록시를 통과함(대역폭 비례 비용 발생, 데이터센터 프록시는 이 서버 IP와
+똑같이 막히니 무의미 — **주거용(residential) 프록시**여야 함).
+
+1. 프록시 서비스 가입 — 구독 없이 트래픽만큼만 내는 곳이 이 프로젝트 용도(개인, 저사용량)에
+   맞음. 예: [DataImpulse](https://dataimpulse.com)(5GB $5, GB당 $1, 미사용분 만료 없음),
+   [IPRoyal](https://iproyal.com)(1GB $7 정도부터, 미사용분 만료 없음). 5GB면 대략 곡 1000개
+   분량(곡 하나 ≈ 4-5MB) — 개인용으로는 한 번 사면 오래감.
+2. 발급받은 `호스트:포트`, `유저:비번`으로 아래 형식 조합:
+   `http://<user>:<pass>@<host>:<port>`
+3. Render 대시보드 → `invidious-companion` 서비스 → **Environment** 탭 → 환경변수 추가:
+   `PROXY` = 위에서 만든 URL. 저장하면 자동 재배포됨(`render.yaml`엔 안 넣음 — 필요한 사람만
+   쓰는 옵션이라 Blueprint 필드로 강제하지 않음, 수동으로 추가해도 다음 Blueprint sync 때
+   유지됨).
+4. 재배포 후 로그에서 PO 토큰 발급 에러가 사라졌는지, 실제 재생이 되는지 확인.
 
 ## 필요한 키
 
