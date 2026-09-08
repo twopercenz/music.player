@@ -1,0 +1,30 @@
+# Render Blueprint — deploys ONLY invidious_companion as a public Web
+# Service (see README's "배포" section for why: this app moved to Vercel,
+# which can't run an always-on container, but the Companion service can run
+# happily on Render's free tier since it doesn't need private networking —
+# it's already gated by SERVER_SECRET_KEY / COMPANION_SECRET_KEY).
+#
+# Use it via the Render dashboard: New > Blueprint > pick this repo. Render
+# reads this file and provisions the service; you'll be prompted for
+# SERVER_SECRET_KEY (sync: false below means "ask, don't store in git").
+#
+# After it deploys, copy its https://<name>.onrender.com URL into Vercel's
+# COMPANION_URL env var for the web app.
+services:
+  - type: web
+    name: invidious-companion
+    runtime: image
+    plan: free
+    image:
+      url: quay.io/invidious/invidious-companion:2026.09.05-6386b18
+    envVars:
+      # Companion listens on 8282 regardless of $PORT (it doesn't read that
+      # var) — this just tells Render's proxy which port to forward to.
+      - key: PORT
+        value: "8282"
+      # Must be exactly 16 alphanumeric characters, and must match
+      # COMPANION_SECRET_KEY in the Vercel web app's env vars — same value,
+      # different var name (see lib/companion.ts). Generate one with:
+      # openssl rand -hex 8
+      - key: SERVER_SECRET_KEY
+        sync: false
