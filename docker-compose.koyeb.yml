@@ -1,0 +1,48 @@
+# Koyeb-specific compose file, run inside the single privileged container
+# built from Dockerfile.koyeb (see the comment there for why this exists).
+#
+# Differences from docker-compose.yml (local dev):
+#   - web pulls a prebuilt image from GHCR instead of `build: .` — no build
+#     step happens on this container's (possibly cold) start.
+#   - No `env_file: .env` — that file doesn't exist in this image (it's
+#     gitignored/dockerignored). Instead each var is substituted from the
+#     Koyeb Service's own environment variables/secrets at `docker compose
+#     up` time, so set every ${VAR} below in the Koyeb dashboard.
+#   - No named volume for the Companion PO-token cache — Koyeb Free
+#     instances don't support persistent Volumes, and this container itself
+#     is ephemeral across redeploys/restarts anyway.
+#
+# GHCR_IMAGE below must match the image .github/workflows/build-web-image.yml
+# pushes — defaults to ghcr.io/<owner>/<repo>:latest, override via the
+# WEB_IMAGE env var on the Koyeb service if you renamed anything.
+services:
+  web:
+    image: ${WEB_IMAGE:?Set WEB_IMAGE to ghcr.io/<owner>/<repo>:latest in Koyeb service env vars}
+    ports:
+      - "3000:3000"
+    environment:
+      SITE_PASSWORD: ${SITE_PASSWORD:?Set SITE_PASSWORD in Koyeb service env vars}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in Koyeb service env vars}
+      COMPANION_SECRET_KEY: ${COMPANION_SECRET_KEY:?Set COMPANION_SECRET_KEY in Koyeb service env vars}
+      COMPANION_URL: http://invidious_companion:8282
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:?Set YOUTUBE_API_KEY in Koyeb service env vars}
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in Koyeb service env vars}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Set SUPABASE_SECRET_KEY in Koyeb service env vars}
+    depends_on:
+      - invidious_companion
+    restart: unless-stopped
+
+  invidious_companion:
+    image: quay.io/invidious/invidious-companion:2026.09.05-6386b18
+    environment:
+      SERVER_SECRET_KEY: ${COMPANION_SECRET_KEY:?Set COMPANION_SECRET_KEY in Koyeb service env vars}
+    volumes:
+      - invidious_companion_cache:/var/tmp
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  invidious_companion_cache:
