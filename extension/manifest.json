@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "music.player Companion",
+  "version": "1.0.0",
+  "description": "Resolves YouTube audio streams for music.player from inside your own browser session, so no server ever has to talk to YouTube directly.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8vN1K1c+WsCIGpKGSO7cNhbSZfYIMre5gY2gy7Wm2NQtJJ49zmHBM28uTKtgm9RXNWkWJ4HA4vh5LhJjdtF0IIGPhjyPmxWAsuJMTBdmpl++2cOfL0+Eis0j7KQcMWCYUmcRFMa6/MWn4hLKxKNCFsSw+1OtxpGrXJK16Hdqh67P7k8oo/vzHg1ck5zWXO2jcevYk5osNNUeSHK2uNsMiD5KbAr4kNICF9oIZajksy9PpRGGXZFXzjHbo6hGDGHvp8wdFAdnOQbZiwB5kROKhCHP2lCG8fjaRUsiG5ZmDW6iH+y6inmXH/8Iyc+ONTzZQYx6S309U7Ihok+OJ8n8HQIDAQAB",
+  "permissions": ["tabs"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/watch*"],
+      "js": ["content-script.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"]
+  }
+}

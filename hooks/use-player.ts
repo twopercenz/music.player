@@ -88,16 +88,18 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
 
       try {
         const resolved = await resolveTrackAudio(track);
-        const isCacheHit = resolved.url.startsWith("blob:");
 
         // <audio src="..."> can't read a failed request's JSON error body —
         // a real Companion failure (private video, region lock, etc.) just
         // shows up as the browser's generic "no supported source" error
         // instead of the message lib/companion.ts actually classified it as.
-        // Probing first (only for a fresh, non-cached URL — a blob: URL is
-        // already-known-good data) gets a real answer before audio.src is
-        // ever set — see app/api/extract/route.ts.
-        if (!isCacheHit) {
+        // Probing first (only for the /api/extract fallback — a direct URL,
+        // whether an IndexedDB blob: or the extension's raw googlevideo.com
+        // URL, has nothing at that URL to probe, and probing the latter
+        // would be a cross-origin fetch() blocked by CORS anyway — see
+        // lib/resolve-audio.ts's isDirect doc comment) gets a real answer
+        // before audio.src is ever set — see app/api/extract/route.ts.
+        if (!resolved.isDirect) {
           const probeUrl = `${resolved.url}${resolved.url.includes("?") ? "&" : "?"}probe=1`;
           const probe = await fetch(probeUrl);
           if (!probe.ok) {
@@ -106,18 +108,25 @@ export function usePlayer(audioRef: React.RefObject<HTMLAudioElement>) {
           }
         }
 
+        const isCacheHit = resolved.url.startsWith("blob:");
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = isCacheHit ? resolved.url : null;
 
         audio.src = resolved.url;
-        // Both a cache hit (blob:) and a fresh Companion-proxied stream
-        // support Range, so seeking works immediately either way.
+        // A cache hit, an extension-resolved URL, and a fresh
+        // Companion-proxied stream all support Range, so seeking works
+        // immediately either way.
         setSeekable(true);
 
         // Kick off a background copy into the IndexedDB cache so a replay
         // (this session or after a reload) skips the network — and
-        // Companion + the yt-dlp-era round trip to YouTube — entirely.
-        if (track.source === "youtube" && !isCacheHit) {
+        // Companion + the yt-dlp-era round trip to YouTube — entirely. Can't
+        // do this for an extension-resolved googlevideo.com URL: fetch() is
+        // subject to CORS (unlike the <audio> element's own load above),
+        // and Google doesn't allow it cross-origin — see
+        // lib/resolve-audio.ts. It'll just get re-resolved next play, which
+        // is still local/instant, so this is a caching gap, not a playback one.
+        if (track.source === "youtube" && !isCacheHit && !resolved.isDirect) {
           void fetch(resolved.url)
             .then((r) => (r.ok ? r.blob() : null))
             .then((b) => b && cacheAudio(track.videoId, b))
