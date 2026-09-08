@@ -62,11 +62,14 @@ bun dev
 
 **주의**: PO 토큰 발급 자체도 결국 YouTube에 요청을 보내는 과정이라, Companion을 돌리는
 서버의 IP가 이미 강하게 차단된 클라우드 대역이면 발급이 계속 실패할 수 있음(컨테이너 로그에
-`Failed to validate PO token: all validation attempts returned non-200 status codes`가
-반복됨 — 그동안 `/api/extract`는 "재생 서버가 아직 준비 중입니다" 에러를 돌려줌). 이 경우
-Companion의 `PROXY` 환경변수 외엔 뾰족한 수가 없음 — 배포 전에 실제 환경에서 한 번 확인해볼 것.
+`Failed to validate PO token: all validation attempts returned non-200 status codes`, 또는
+Google 엣지 자체 차단이면 `youtubei/v1/player`가 403 `Sorry... automated queries` HTML을
+반환 — 실제로 Render Public Web Service에서 겪음). 이건 토큰 내용 문제가 아니라 IP 평판
+문제라 클라이언트 종류나 재시도로는 안 풀림. 그래서 아래 "배포" 섹션은 애초에 클라우드 IP를
+안 쓰고 **집에서 Companion을 직접 돌리는 방식**을 씀 — 그게 안 맞으면(예: 24시간 켜둘 집
+기기가 없음) 클라우드에 올리고 아래 PROXY로 우회하는 것도 방법.
 
-**PROXY 설정법**: [config.ts](https://github.com/iv-org/invidious-companion/blob/master/src/lib/helpers/config.ts)가
+**PROXY 설정법** (클라우드에 올릴 경우에만 필요): [config.ts](https://github.com/iv-org/invidious-companion/blob/master/src/lib/helpers/config.ts)가
 `PROXY` 환경변수를 읽어서 `getFetchClient`로 넘기는데, 이게 PO 토큰 발급뿐 아니라
 `videoPlaybackProxy.ts`의 실제 오디오 바이트 요청(googlevideo.com)에도 그대로 쓰임 — 즉 재생하는
 곡의 트래픽이 전부 이 프록시를 통과함(대역폭 비례 비용 발생, 데이터센터 프록시는 이 서버 IP와
@@ -78,10 +81,7 @@ Companion의 `PROXY` 환경변수 외엔 뾰족한 수가 없음 — 배포 전�
    분량(곡 하나 ≈ 4-5MB) — 개인용으로는 한 번 사면 오래감.
 2. 발급받은 `호스트:포트`, `유저:비번`으로 아래 형식 조합:
    `http://<user>:<pass>@<host>:<port>`
-3. Render 대시보드 → `invidious-companion` 서비스 → **Environment** 탭 → 환경변수 추가:
-   `PROXY` = 위에서 만든 URL. 저장하면 자동 재배포됨(`render.yaml`엔 안 넣음 — 필요한 사람만
-   쓰는 옵션이라 Blueprint 필드로 강제하지 않음, 수동으로 추가해도 다음 Blueprint sync 때
-   유지됨).
+3. 쓰는 호스팅의 Companion 서비스 환경변수에 `PROXY` = 위에서 만든 URL로 등록, 재배포.
 4. 재배포 후 로그에서 PO 토큰 발급 에러가 사라졌는지, 실제 재생이 되는지 확인.
 
 ## 필요한 키
@@ -98,38 +98,62 @@ Companion의 `PROXY` 환경변수 외엔 뾰족한 수가 없음 — 배포 전�
 
 Spotify 키는 필요 없습니다 (검색도 YouTube로 통합됨).
 
-## 배포 (Vercel + Render, 둘 다 무료 티어)
+## 배포 (Vercel + 집에서 돌리는 Companion, 완전 무료)
 
-시도했던 다른 조합들은 다 이 구조(앱 + 상시 실행되는 Companion 서비스)의 무료 티어에서
-막혔음: Render의 무료 Private Service는 내부 DNS가 안 붙었고(`getaddrinfo ENOTFOUND`), Koyeb은
-무료 인스턴스가 조직당 1개뿐이고 그 인스턴스는 서비스 메시에서 아예 빠짐. 게다가 Koyeb은 2026년
-2월 Mistral AI에 인수된 뒤로 신규 가입 시 무료 Starter 플랜 자체가 막힘(Pro $29/월부터).
+시도했던 클라우드 조합들은 전부 두 문제 중 하나에 걸렸음:
 
-그런데 애초에 Vercel을 배제했던 이유("상시 실행되는 Companion")는 **Companion에만 해당**하지
-이 Next.js 앱 자체엔 해당 안 됨 — `/api/extract`(`app/api/extract/route.ts`)는 Companion이 준
-오디오 바이트를 그대로 스트리밍으로 흘려보내기만 함(`new Response(upstream.body, ...)`). Vercel
-Functions는 스트리밍 응답엔 4.5MB 바디 제한이 안 걸리고, Fluid Compute 켜진 Hobby(무료) 플랜
-기준 실행시간도 기본 300초까지라 오디오 프록시 정도는 충분함. 그래서:
+- **서비스 두 개를 무료로 같이 못 띄움** — Render 무료 Private Service는 내부 DNS가 안
+  붙었고(`getaddrinfo ENOTFOUND`), Koyeb 무료 인스턴스는 조직당 1개뿐이고 서비스 메시에서
+  아예 빠짐(게다가 2026년 2월 Mistral AI 인수 이후 신규 가입은 무료 Starter 플랜 자체가 막힘).
+- **떴다 해도 IP가 막힘** — Render의 Public Web Service로 Companion을 띄웠더니 PO 토큰
+  발급 요청 자체가 Google 엣지에서 403 `Sorry... automated queries`로 막힘 — 이건 PO 토큰
+  내용의 문제가 아니라 Render IP 대역이 자동화 트래픽으로 찍혀서 나는 문제라, 토큰이나 클라이언트
+  종류를 바꿔도 안 풀림. 유료 주거용(residential) 프록시가 정석적인 해법이긴 한데, 완전 무료로
+  가려면 **애초에 클라우드 IP를 안 쓰면 됨**.
 
-- **Vercel**(무료) — 이 앱 전체(로그인 게이트, `/api/extract` 프록시 포함). 서버리스라 별도
-  컨테이너 운영 부담이 없음.
-- **Render**(무료 Web Service, **Public** — Private 아님) — `invidious_companion` 이미지
-  하나만. `COMPANION_SECRET_KEY` Bearer 토큰으로 막혀 있으니 공개 URL이어도 안전함 — 이전에
-  막혔던 건 Private Service 쪽 내부 DNS 문제였지, 공개 자체가 문제였던 게 아니었음.
+그래서 최종 구조:
+
+- **Vercel**(무료) — 이 앱 전체(로그인 게이트, `/api/extract` 프록시 포함). Vercel을 원래
+  배제했던 이유("상시 실행되는 Companion 필요")는 **Companion에만 해당**하지 이 Next.js 앱
+  자체엔 해당 안 됨 — `/api/extract`는 Companion이 준 오디오 바이트를 스트리밍으로 그대로
+  흘려보내기만 함(`new Response(upstream.body, ...)`). Vercel Functions는 스트리밍 응답엔
+  4.5MB 바디 제한이 안 걸리고, Fluid Compute 켜진 Hobby(무료) 플랜 기준 실행시간도 기본
+  300초까지라 오디오 프록시 정도는 충분함.
+- **Companion은 집에서 직접 돌림** — 24시간 켜둘 수 있는 아무 기기(PC, 라즈베리파이 등)에서
+  `docker run`으로 띄움. 집 인터넷 IP는 진짜 주거용이라 애초에 차단 대역이 아님 — 프록시가
+  아예 필요 없어짐. 밖에서(Vercel에서) 접근 가능하게 하는 건
+  [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)(무료 Personal 플랜에 포함,
+  대역폭 제한 사실상 넉넉함)로 안정적인 HTTPS 주소를 만듦 — 공유기 포트포워딩이나 집 IP가
+  바뀌는 것도 신경 안 써도 됨(Tailscale이 알아서 처리).
 
 배포 순서:
 
-1. Render 대시보드에서 **New > Blueprint** → 이 저장소 선택. 저장소 루트의 `render.yaml`을
-   읽어서 Companion 서비스를 자동으로 만듦 — `SERVER_SECRET_KEY` 값만 물어봄(16자리 영숫자).
-   배포되면 `https://<name>.onrender.com` 같은 공개 URL이 생김.
-2. Vercel에서 이 저장소 Import → 위 표의 환경변수들 + `COMPANION_URL`을 방금 생긴 Render URL로
-   등록(끝에 `/` 없이), `COMPANION_SECRET_KEY`는 1번의 `SERVER_SECRET_KEY`와 동일한 값으로.
-   Deploy.
-3. 무료 티어라 둘 다 슬립함: Render는 15분 미접속시(다음 요청에 콜드스타트 ~1분), Vercel 함수는
-   기본적으로 슬립은 없지만 Companion이 슬립 중이면 첫 재생 요청이 그만큼 오래 걸림 — 개인용
-   앱이라 감수.
-4. 배포 후 반드시 실제로 한 곡 재생해서 아래 "주의" 항목(PO 토큰 발급 실패)이 없는지 확인할
-   것 — Render의 IP 대역도 차단 목록에 있을 가능성이 있음.
+1. **집 기기에 Companion 띄우기**:
+   ```bash
+   docker run -d --name invidious_companion \
+     -p 8282:8282 \
+     -e SERVER_SECRET_KEY=<COMPANION_SECRET_KEY와 동일한 값> \
+     -v invidious_companion_cache:/var/tmp \
+     --restart unless-stopped \
+     quay.io/invidious/invidious-companion:2026.09.05-6386b18
+   ```
+2. **같은 기기에 Tailscale 설치** — [tailscale.com/download](https://tailscale.com/download),
+   무료 Personal 계정으로 로그인.
+3. **Funnel로 공개**:
+   ```bash
+   tailscale funnel --bg --https=443 localhost:8282
+   ```
+   처음 실행하면 승인 링크를 보여줌(admin console에서 Funnel 정책 허용) — 링크 열어서 승인.
+   `--bg`라 재부팅해도 자동으로 다시 켜짐.
+4. `tailscale funnel status`로 확인하면 `https://<기기이름>.<tailnet이름>.ts.net` 같은 공개
+   HTTPS 주소가 나옴 — 이게 `COMPANION_URL`.
+5. Vercel에서 이 저장소 Import → 아래 표의 환경변수들 + `COMPANION_URL`을 그 Funnel 주소로
+   등록(끝에 `/` 없이). Deploy.
+6. 배포 후 반드시 실제로 한 곡 재생해서 확인. 집 기기/인터넷이 꺼지면 재생도 같이 죽는다는 게
+   유일한 대가 — 개인용 앱이라 감수.
+
+이 IP 차단 문제를 클라우드 호스팅(Render 등)으로 그대로 풀고 싶으면 위쪽 "Invidious
+Companion이란" 항목의 **PROXY 설정법**(유료 주거용 프록시) 참고.
 
 로컬 개발은 여전히 `docker compose up --build`(위 "로컬에서 돌리기" 참고) — 이건 배포 방식과
 무관하게 그대로 씀.
