@@ -42,3 +42,7 @@ next-env.d.ts
 # misc
 .vscode
 PRIVATE.md
+google-*/
+/google-*/
+google-*.tar.gz
+COMPANION_SECRET_KEY
