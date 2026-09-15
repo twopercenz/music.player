@@ -64,7 +64,12 @@ async function resolveVideo(videoId) {
     });
     console.log("[music.player Companion] opened tab", tab.id, "for", videoId);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
-    console.log("[music.player Companion] tab finished loading, asking content script");
+    // "complete" doesn't tell us the tab is still on the /watch URL we
+    // opened — a consent/age/sign-in interstitial redirect would also fire
+    // "complete", just on a page content_scripts.matches doesn't cover, and
+    // that's indistinguishable from a content-script bug without this.
+    const finalTab = await chrome.tabs.get(tab.id).catch(() => null);
+    console.log("[music.player Companion] tab finished loading, final URL:", finalTab?.url);
     const result = await askContentScript(tab.id, EXTRACT_TIMEOUT_MS);
     return result ?? { ok: false, error: "빈 응답을 받았습니다." };
   } catch (error) {
