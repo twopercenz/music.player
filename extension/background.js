@@ -33,14 +33,9 @@ function waitForTabComplete(tabId, timeoutMs) {
   });
 }
 
-function askContentScript(tabId, timeoutMs) {
+function sendToTabOnce(tabId) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error("확장 프로그램이 페이지에서 응답하지 않습니다.")),
-      timeoutMs,
-    );
     chrome.tabs.sendMessage(tabId, { type: "extract" }, (response) => {
-      clearTimeout(timer);
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;
@@ -48,6 +43,33 @@ function askContentScript(tabId, timeoutMs) {
       resolve(response);
     });
   });
+}
+
+const CONTENT_SCRIPT_RETRY_DELAY_MS = 200;
+
+// The tab reaching "complete" only means the network load finished — on a
+// heavy page like YouTube's watch page, especially in a backgrounded
+// (active: false) tab on slower hardware, content-script.js's own
+// onMessage listener can still not be registered yet by the time we ask.
+// That's a hard, synchronous "no listener" failure from chrome.tabs
+// .sendMessage — not something content-script.js's *internal* retry loop
+// (which only runs once a message actually reaches it) can ever catch.
+// Retry the send itself until the deadline instead of giving up on the
+// first "Could not establish connection."
+async function askContentScript(tabId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      return await sendToTabOnce(tabId);
+    } catch (error) {
+      lastError = error;
+      if (!/Could not establish connection/.test(error.message)) throw error;
+      console.log("[music.player Companion] content script not ready yet, retrying:", error.message);
+      await new Promise((r) => setTimeout(r, CONTENT_SCRIPT_RETRY_DELAY_MS));
+    }
+  }
+  throw lastError ?? new Error("확장 프로그램이 페이지에서 응답하지 않습니다.");
 }
 
 async function resolveVideo(videoId) {
