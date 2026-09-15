@@ -34,8 +34,9 @@
   동기화해봐야 재생이 안 되므로).
 - **접근 제어**: 계정 없음 — 미들웨어가 걸어놓은 비밀번호 하나로 전체 게이트.
 
-전체 설계 배경(왜 처음엔 Spotify+YouTube였는지, 왜 Vercel이 아니라 Docker로 배포하는지, 비용을
-어떻게 $0으로 맞췄는지 등)은 이 프로젝트를 만들 때 나눈 대화에 정리되어 있음.
+전체 설계 배경(왜 처음엔 Spotify+YouTube였는지, 왜 Vercel/Render/Koyeb를 거쳐 결국 Oracle
+Cloud로 왔는지, 비용을 어떻게 $0으로 맞췄는지 등)은 이 프로젝트를 만들 때 나눈 대화에 정리되어
+있음.
 
 ## 로컬에서 돌리기
 
@@ -80,13 +81,18 @@ bun dev
 서버의 IP가 이미 강하게 차단된 클라우드 대역이면 발급이 계속 실패할 수 있음(컨테이너 로그에
 `Failed to validate PO token: all validation attempts returned non-200 status codes`, 또는
 Google 엣지 자체 차단이면 `youtubei/v1/player`가 403 `Sorry... automated queries` HTML을
-반환 — 실제로 Render Public Web Service와 이 Codespace(Azure) 양쪽에서 겪음). 이건 토큰
-내용 문제가 아니라 IP 평판 문제라 클라이언트 종류나 재시도로는 안 풀림 — 그래서 위 "배포"
-섹션의 기본 경로는 아예 [브라우저 확장 프로그램](extension/)을 씀(서버가 안 끼니까 이 문제
-자체가 없음). 그래도 `/api/extract` 폴백을 살리고 싶으면 아래 두 방법 중 하나:
+반환 — 실제로 Render Public Web Service, Azure Codespace, **그리고 지금 쓰는 Oracle
+Cloud VM까지 세 군데 다 똑같이 겪음**). 클라우드 회사가 어디든 결국 데이터센터 IP는 전부
+YouTube의 봇 차단 리스트에 이미 올라가 있다는 뜻 — 토큰 내용 문제가 아니라 IP 평판 문제라
+클라이언트 종류나 재시도로는 안 풀림(공개 Invidious 인스턴스들도 예외 아님 — 살아남은 소수는
+전부 rotating residential proxy 인프라를 돌리는 비용을 감당해서 버티는 거지, 무슨 우회법을
+따로 아는 게 아님). 그래서 위 "배포" 섹션의 기본 경로는 아예 [브라우저 확장
+프로그램](extension/)을 씀(서버가 안 끼니까 이 문제 자체가 없음). 그래도 `/api/extract`
+폴백을 살리고 싶으면 아래 두 방법 중 하나:
 
 **집에서 Companion 돌리기** (무료, 24시간 켜둘 기기가 있을 때): 집 인터넷 IP는 진짜
-주거용이라 애초에 차단 대역이 아님.
+주거용이라 애초에 차단 대역이 아님. 지금은 안 쓰고 있지만(Companion을 Oracle VM에 상시
+호스팅하는 쪽으로 감), 대안으로 유효함.
 ```bash
 docker run -d --name invidious_companion \
   -p 8282:8282 \
@@ -131,47 +137,98 @@ tailscale funnel --bg --https=443 localhost:8282
 
 Spotify 키는 필요 없습니다 (검색도 YouTube로 통합됨).
 
-## 배포 (Vercel만, 완전 무료)
+## 배포 (Oracle Cloud Always Free)
 
-시도했던 클라우드 Companion 호스팅 조합들은 전부 막혔음:
+**거쳐온 것들**: Vercel(단독) → Render/Koyeb로 Companion 같이 띄우려다 무료 티어 제약에
+막힘 → Render Public Service + 집에서 Companion을 Tailscale Funnel로 노출 → 지금은 **web
+과 Companion 둘 다 Oracle Cloud Always Free 인스턴스 위**. 앱만 딴 데 두고 Companion을
+집 기기/Vercel/다른 클라우드에 흩어놓지 않고, 인프라를 한 계정·한 VCN 안에 다 모으고 싶어서
+옮김 — 영구 무료 티어라 상시 실행 비용도 $0.
 
-- **서비스 두 개를 무료로 같이 못 띄움** — Render 무료 Private Service는 내부 DNS가 안
-  붙었고(`getaddrinfo ENOTFOUND`), Koyeb 무료 인스턴스는 조직당 1개뿐이고 서비스 메시에서
-  아예 빠짐(게다가 2026년 2월 Mistral AI 인수 이후 신규 가입은 무료 Starter 플랜 자체가 막힘).
-- **떴다 해도 IP가 막힘** — Render의 Public Web Service로 Companion을 띄웠더니 PO 토큰
-  발급 요청 자체가 Google 엣지에서 403 `Sorry... automated queries`로 막힘 — IP 평판 문제라
-  토큰/클라이언트 종류를 바꿔도 안 풀림. 이건 Codespace(Azure)에서도 똑같이 재현됨 — 클라우드
-  데이터센터 IP는 어디든 거의 다 이 대역에 걸림.
+### 왜 인스턴스가 2개인가
 
-그런데 애초에 서버가 YouTube에 요청을 안 보내면 이 문제 자체가 없어짐 —
-**[브라우저 확장 프로그램](extension/)** 이 그 역할을 함: 사용자 브라우저가 직접
-`youtube.com/watch` 탭을 열어서 재생 URL을 읽어옴(자기 자신의 진짜 주거용 IP, 진짜 로그인
-세션으로). 그래서 배포는 그냥:
+`docker-compose.yml`의 두 서비스(`web`, `invidious_companion`)를 **각각 다른 VM에** 올림.
+이유는 이미지 아키텍처가 안 맞아서:
 
-- **Vercel**(무료) — 이 앱 전체. Vercel을 원래 배제했던 이유("상시 실행되는 Companion
-  필요")는 서버 쪽 얘기였고, 이제 기본 경로는 서버가 아예 안 낌. (참고로 `/api/extract`
-  폴백 경로만 보면 이 이유도 사실 틀렸음 — 스트리밍 응답이라 Vercel의 4.5MB 바디 제한도 안
-  걸리고 Fluid Compute Hobby 기준 실행시간 300초라 오디오 프록시 정도는 충분함. 자세한 건
-  아래 "Invidious Companion이란" 참고.)
-- **Companion 서버는 아예 안 띄움** — 확장 프로그램이 기본 경로, `/api/extract`는 확장이
-  없거나 실패했을 때 폴백일 뿐이라 없어도 배포/재생 자체는 됨(그 폴백만 못 씀).
+- `oven/bun:1-debian`(web 이미지) — 멀티아키텍처, amd64/arm64 둘 다 지원
+- `quay.io/invidious/invidious-companion` — **amd64 전용**, arm64 매니페스트 없음
 
-배포 순서:
+Oracle Always Free의 제일 좋은 셰이프(Ampere A1, 최대 4 OCPU/24GB)는 **arm64**라서
+Companion을 그 위에 올리면 QEMU 에뮬레이션이 필요함 — 느리고, 애초에 IP 차단이랑 씨름하는
+서비스에 에뮬레이션까지 얹을 이유가 없어서 그냥 둘 다 Always Free의 **amd64 마이크로
+인스턴스**(`VM.Standard.E2.1.Micro`, 계정당 2개 무료 포함)에 하나씩 올림:
 
-1. Vercel에서 이 저장소 Import → 아래 표의 환경변수들 등록(`COMPANION_SECRET_KEY`/
-   `COMPANION_URL`은 폴백을 안 쓸 거면 아무 값이나 넣어도 됨 — `lib/companion.ts`가 값
-   존재만 확인함). Deploy.
-2. 실제로 쓸 브라우저에 [extension/](extension/) 설치([extension/README.md](extension/README.md)
-   참고) — Chromium 계열(Chrome/Edge/Brave)만 지원.
-3. 배포된 URL 접속 → 로그인 → 재생 테스트.
+| 서비스 | 인스턴스 | 셰이프 | 역할 |
+|---|---|---|---|
+| `web` (Next.js) | `web-vm-e2-micro` | `VM.Standard.E2.1.Micro` (amd64) | Caddy(자동 HTTPS) 뒤에서 :3000 서빙 |
+| `invidious_companion` | `companion-vm` | `VM.Standard.E2.1.Micro` (amd64) | `web-vm`의 IP에서만 8282 인그레스 허용 |
 
-확장 프로그램은 그 브라우저가 열려 있을 때만 필요함(백그라운드 서버가 아니라 요청 시점에
-관여) — 매번 켜둘 필요 없이, 그냥 그 브라우저로 앱을 쓸 때만 설치돼 있으면 됨.
+(Ampere A1은 지금 이 리전에서 상시 품절이라 못 씀 — 언젠가 잡히면 `web` 쪽을 더 여유 있는
+스펙으로 옮기는 것도 고려 중, 급한 건 아님.)
 
-**폴백(`/api/extract`)을 굳이 살리고 싶으면**(다른 브라우저에서도 쓰고 싶다든가): 위쪽
-"Invidious Companion이란" 항목의 **PROXY 설정법**(유료 주거용 프록시, ~$5) 또는 집 기기에
-Companion을 띄우고 [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)로 노출하는
-방법을 참고 — 둘 다 `COMPANION_URL`을 그 주소로만 바꾸면 됨.
+### 도메인 · HTTPS
+
+`web-vm-e2-micro`의 Public IP를 **Reserved**로 승격해서 고정해두고(재부팅해도 안 바뀜),
+[mxc-play.kro.kr](https://mxc-play.kro.kr)(무료 서브도메인)의 A 레코드를 거기로 맞춤.
+그 앞에 [Caddy](https://caddyserver.com/)를 컨테이너로 띄워서(`--network host`,
+`reverse_proxy localhost:3000`) Let's Encrypt 인증서를 자동으로 받고 갱신함 — nginx +
+certbot 조합 안 써도 됨.
+
+> kro.kr처럼 여러 사람이 쓰는 무료 서브도메인은 Let's Encrypt가 그 도메인 전체를 하나의
+> "등록 도메인"으로 보고 **주당 인증서 발급 50개**를 공유 한도로 제한함 — 다른 사용자가 그
+> 주간 한도를 채워두면 우리 발급도 `HTTP 429 rateLimited`로 잠깐 막힐 수 있음. Caddy가
+> 알아서 최대 30일까지 백오프하며 재시도하니 기다리면 됨, 별도 조치 불필요.
+
+### 보안 그룹(Security List) 원칙
+
+기본은 전부 막고 필요한 것만 좁혀서 엶:
+
+- `22`(SSH), `80`/`443`(Caddy) — `0.0.0.0/0`에 공개 (정상적인 공개 서비스 포트라 당연히 열림)
+- `8282`(Companion) — **`web-vm`의 IP에서만** 허용, 인터넷 전체엔 안 엶(companion↔web 전용
+  트래픽이지 일반 공개 API가 아니므로)
+- OCI의 Security List가 열려 있어도 **VM 자체의 iptables**(Ubuntu 기본 이미지는 22만 허용)가
+  따로 막고 있을 수 있음 — 둘 다 확인해야 함, 하나만 보고 "포트 열었는데 왜 안 되지" 하기 쉬움
+
+### 배포 자동화 (GitHub Actions)
+
+`main`에 push하면 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)이 알아서:
+
+1. `web` 이미지를 `linux/amd64`로 빌드해서 GHCR(`ghcr.io/<owner>/music-player-web`)에 푸시
+2. `web-vm-e2-micro`에 SSH로 접속해서 새 이미지 pull → 기존 `web` 컨테이너 교체
+
+레포 Settings → Secrets and variables → Actions에 아래 세 개 필요(값은 직접 발급/확인):
+
+| Secret | 값 |
+|---|---|
+| `DEPLOY_HOST` | `web-vm-e2-micro`의 Reserved Public IP |
+| `DEPLOY_USER` | `ubuntu` |
+| `DEPLOY_SSH_KEY` | 그 VM에 등록해둔 SSH 개인키 전체 |
+
+`invidious_companion`(`companion-vm`)은 이 파이프라인에 안 낌 — 훨씬 덜 바뀌는 서비스라 지금은
+수동 배포(`docker save | ssh | docker load` 로 로컬에서 빌드한 이미지를 레지스트리 없이 바로
+전달)로 충분함.
+
+### 브라우저 확장 프로그램 관련 주의
+
+기본 경로(확장 프로그램)는 **그 브라우저가 실제로 youtube.com에 접속 가능해야** 동작함 —
+당연한 얘기 같지만, 학교/회사에서 관리하는(managed) 기기는 흔히 YouTube 자체를 네트워크
+정책으로 막아두는 경우가 있고, 그런 기기에서 열리는 숨겨진 탭도 똑같이 막힘(주소창엔 정상
+URL이 찍히는데 실제로는 Chrome의 "관리자에 의해 차단됨" 페이지라 content script가 주입될
+진짜 페이지가 없음). 이 경우 그 기기에서는 확장 경로 자체가 원천적으로 안 됨 — 코드 문제가
+아니라 네트워크 정책 문제라 손 쓸 방법이 없고, 다른(비관리) 기기·브라우저에서 쓰거나 위
+"Invidious Companion이란"의 PROXY 폴백에 의존해야 함.
+
+### 처음부터 셋업할 경우 순서 요약
+
+1. OCI 계정 생성 → VCN/서브넷/Security List 구성 → 인스턴스 2개 생성(Always Free 셰이프로)
+2. 각 VM에 Docker 설치, `invidious_companion`은 `docker run`으로 직접, `web`은 위 GitHub
+   Actions 파이프라인으로
+3. `web-vm`의 IP를 Reserved로 승격 → 도메인 A 레코드 연결 → Caddy로 HTTPS
+4. 위 "필요한 키" 표의 환경변수들을 `web-vm`의 `~/.env`에 등록 (레포에 커밋 안 됨, 직접 관리)
+5. 실제로 쓸 브라우저에 [extension/](extension/) 설치([extension/README.md](extension/README.md)
+   참고) — Chromium 계열(Chrome/Edge/Brave)만 지원, 그 브라우저에서 유튜브 자체가 접속
+   가능해야 함(위 주의사항 참고)
+6. 배포된 도메인 접속 → 로그인 → 재생 테스트
 
 로컬 개발은 여전히 `docker compose up --build`(위 "로컬에서 돌리기" 참고) — 이건 배포 방식과
 무관하게 그대로 씀.
