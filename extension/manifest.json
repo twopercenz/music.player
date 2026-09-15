@@ -17,6 +17,11 @@
     }
   ],
   "externally_connectable": {
-    "matches": ["http://localhost:3000/*", "https://*.vercel.app/*"]
+    "matches": [
+      "http://localhost:3000/*",
+      "https://mxc-play.kro.kr/*",
+      "http://mxc-play.kro.kr/*",
+      "http://mxc-play.kro.kr:3000/*"
+    ]
   }
 }
