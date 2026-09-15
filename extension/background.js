@@ -52,6 +52,7 @@ function askContentScript(tabId, timeoutMs) {
 
 async function resolveVideo(videoId) {
   if (!VIDEO_ID_RE.test(videoId)) {
+    console.warn("[music.player Companion] rejected invalid videoId", videoId);
     return { ok: false, error: "invalid videoId" };
   }
 
@@ -61,24 +62,45 @@ async function resolveVideo(videoId) {
       url: `https://www.youtube.com/watch?v=${videoId}`,
       active: false,
     });
+    console.log("[music.player Companion] opened tab", tab.id, "for", videoId);
     await waitForTabComplete(tab.id, TAB_LOAD_TIMEOUT_MS);
+    console.log("[music.player Companion] tab finished loading, asking content script");
     const result = await askContentScript(tab.id, EXTRACT_TIMEOUT_MS);
     return result ?? { ok: false, error: "빈 응답을 받았습니다." };
   } catch (error) {
+    console.error("[music.player Companion] resolveVideo failed", error);
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   } finally {
     if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
 
-chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  // Nothing here logged before — made it impossible to tell "message never
+  // arrived (externally_connectable mismatch, extension not active, etc.)"
+  // apart from "arrived and failed downstream" from the service worker
+  // console alone. Log first, unconditionally, before any other logic.
+  console.log("[music.player Companion] onMessageExternal", {
+    from: sender?.origin ?? sender?.url,
+    type: message?.type,
+  });
+
   if (message?.type === "ping") {
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return false;
   }
   if (message?.type === "resolve" && typeof message.videoId === "string") {
-    resolveVideo(message.videoId).then(sendResponse);
+    resolveVideo(message.videoId)
+      .then((result) => {
+        console.log("[music.player Companion] resolve result", result);
+        sendResponse(result);
+      })
+      .catch((error) => {
+        console.error("[music.player Companion] resolve threw", error);
+        sendResponse({ ok: false, error: String(error) });
+      });
     return true; // async response
   }
+  console.warn("[music.player Companion] unrecognized message, ignoring", message);
   return false;
 });

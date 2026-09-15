@@ -75,10 +75,12 @@ function extract() {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "extract") return undefined;
 
+  console.log("[music.player Companion] content script received extract request");
   let attempts = 0;
   const tryExtract = () => {
     const result = extract();
     if (result.ok || attempts >= 15) {
+      console.log("[music.player Companion] extract result", result);
       sendResponse(result);
       return;
     }

@@ -32,29 +32,35 @@ function getChromeRuntime(): ChromeRuntimeLike | null {
 
 function sendMessage(message: unknown, timeoutMs: number): Promise<unknown> {
   const runtime = getChromeRuntime();
-  if (!runtime) return Promise.resolve(null);
+  if (!runtime) {
+    console.log("[extension-bridge] no chrome.runtime on this page — not a Chromium browser?");
+    return Promise.resolve(null);
+  }
 
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (value: unknown) => {
+    const finish = (value: unknown, reason?: string) => {
       if (settled) return;
       settled = true;
+      if (reason) console.log(`[extension-bridge] ${reason}`, value);
       resolve(value);
     };
-    const timer = setTimeout(() => finish(null), timeoutMs);
+    const timer = setTimeout(() => finish(null, "timed out waiting for extension response"), timeoutMs);
     try {
       runtime.sendMessage(EXTENSION_ID, message, (response) => {
         clearTimeout(timer);
-        // "Could not establish connection" etc. — extension not installed.
+        // "Could not establish connection" etc. — extension not installed,
+        // not enabled for this origin (externally_connectable mismatch), or
+        // otherwise unreachable. Log the exact reason instead of guessing.
         if (runtime.lastError) {
-          finish(null);
+          finish(null, `lastError: ${runtime.lastError.message ?? "unknown"}`);
           return;
         }
-        finish(response ?? null);
+        finish(response ?? null, "response received");
       });
-    } catch {
+    } catch (error) {
       clearTimeout(timer);
-      finish(null);
+      finish(null, `sendMessage threw: ${error}`);
     }
   });
 }
@@ -64,7 +70,7 @@ let cachedAvailable: Promise<boolean> | null = null;
 /** Whether the extension is installed and responding. Cached for the page's lifetime. */
 export function isExtensionAvailable(): Promise<boolean> {
   if (!cachedAvailable) {
-    cachedAvailable = sendMessage({ type: "ping" }, 800).then(
+    cachedAvailable = sendMessage({ type: "ping" }, 1500).then(
       (response) => !!(response as { ok?: boolean } | null)?.ok,
     );
   }
