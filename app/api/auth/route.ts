@@ -25,9 +25,16 @@ export async function POST(request: NextRequest) {
   resetRateLimit(rateLimitKey);
   const token = await createSessionToken();
   const response = NextResponse.json({ ok: true });
+  // `Secure` cookies are silently dropped by the browser over a plain HTTP
+  // connection — behind a reverse proxy (Caddy, etc.) the app itself always
+  // sees a plain HTTP hop from the proxy, so NODE_ENV alone can't tell us
+  // whether the *visitor* is actually on HTTPS. Trust x-forwarded-proto when
+  // a proxy sets it (falls back to NODE_ENV for direct/local access).
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const secure = forwardedProto ? forwardedProto === "https" : process.env.NODE_ENV === "production";
   response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax",
     maxAge: SESSION_MAX_AGE_SECONDS,
     path: "/",
